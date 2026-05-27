@@ -312,16 +312,11 @@ export const getTaskContextForAssistant = async (userId: string) => {
   const [tasks, users] = await Promise.all([
     prisma.task.findMany({
       where: {
-        OR: [
-          { userId },
-          {
-            assignments: {
-              some: {
-                userId,
-              },
-            },
+        assignments: {
+          some: {
+            userId,
           },
-        ],
+        },
       },
       orderBy: { updatedAt: 'desc' },
       take: ASSISTANT_TASK_CONTEXT_LIMIT,

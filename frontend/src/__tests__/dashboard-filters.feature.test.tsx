@@ -16,6 +16,25 @@ const tasks: Task[] = [
     userId: seededUser.id,
     createdAt: new Date('2026-05-01T10:00:00.000Z').toISOString(),
     updatedAt: new Date('2026-05-02T10:00:00.000Z').toISOString(),
+    assignments: [
+      {
+        id: 'assignment-1',
+        taskId: 'task-1',
+        userId: seededUser.id,
+        user: seededUser,
+      },
+    ],
+  },
+  {
+    id: 'task-owned-only',
+    title: 'Owned task without assignment',
+    description: 'The current user owns this task but is not assigned.',
+    status: 'TODO',
+    priority: 'LOW',
+    userId: seededUser.id,
+    createdAt: new Date('2026-05-01T09:00:00.000Z').toISOString(),
+    updatedAt: new Date('2026-05-02T09:00:00.000Z').toISOString(),
+    assignments: [],
   },
 ];
 
@@ -60,6 +79,58 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
         && url.includes('search=auth'),
       )).toBe(true);
     });
+  });
+
+  it('does not show tasks unless the current user is assigned', async () => {
+    renderAppAt('/dashboard');
+
+    await screen.findByRole('heading', { name: /^dashboard$/i });
+
+    expect(await screen.findByText('Implement user authentication')).toBeInTheDocument();
+    expect(screen.queryByText('Owned task without assignment')).not.toBeInTheDocument();
+    expect(screen.getByText('1 result')).toBeInTheDocument();
+  });
+
+  it('saves, reapplies, and deletes a dashboard filter preset', async () => {
+    renderAppAt('/dashboard?status=IN_PROGRESS&priority=HIGH&search=auth');
+
+    await screen.findByRole('heading', { name: /^dashboard$/i });
+
+    await actor.click(screen.getByRole('button', { name: /^save current view$/i }));
+
+    expect(await screen.findByRole('button', { name: /apply saved view/i }))
+      .toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByText(/search: "auth" \+ status: in progress \+ priority: high/i).length)
+      .toBeGreaterThan(0);
+
+    await actor.click(screen.getByRole('button', { name: /^clear$/i }));
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('status=IN_PROGRESS');
+      expect(window.location.search).not.toContain('priority=HIGH');
+      expect(window.location.search).not.toContain('search=auth');
+    });
+
+    await actor.click(screen.getByRole('button', { name: /apply saved view/i }));
+
+    await waitFor(() => {
+      expect(window.location.search).toContain('status=IN_PROGRESS');
+      expect(window.location.search).toContain('priority=HIGH');
+      expect(window.location.search).toContain('search=auth');
+    });
+
+    await waitFor(() => {
+      expect(taskRequestUrls.some((url) =>
+        url.includes('/api/tasks')
+        && url.includes('status=IN_PROGRESS')
+        && url.includes('priority=HIGH')
+        && url.includes('search=auth'),
+      )).toBe(true);
+    });
+
+    await actor.click(screen.getByRole('button', { name: /delete saved view/i }));
+
+    expect(screen.queryByRole('button', { name: /apply saved view/i })).not.toBeInTheDocument();
   });
 });
 

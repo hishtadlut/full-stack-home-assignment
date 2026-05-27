@@ -16,16 +16,11 @@ export const getTasks = async (req: AuthRequest, res: Response) => {
       where: {
         AND: [
           {
-            OR: [
-              { userId },
-              {
-                assignments: {
-                  some: {
-                    userId,
-                  },
-                },
+            assignments: {
+              some: {
+                userId,
               },
-            ],
+            },
           },
           ...(search
             ? [{
@@ -215,16 +210,11 @@ export const getTaskById = async (req: AuthRequest, res: Response) => {
     const task = await prisma.task.findFirst({
       where: {
         id,
-        OR: [
-          { userId },
-          {
-            assignments: {
-              some: {
-                userId,
-              },
-            },
+        assignments: {
+          some: {
+            userId,
           },
-        ],
+        },
       },
       include: taskDetailInclude,
     });

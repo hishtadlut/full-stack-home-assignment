@@ -583,11 +583,13 @@ describe('task endpoints', () => {
     expect(mocks.prisma.task.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         AND: expect.arrayContaining([
-          expect.objectContaining({
-            OR: expect.arrayContaining([
-              expect.objectContaining({ userId: user.id }),
-            ]),
-          }),
+          {
+            assignments: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
         ]),
         status: 'TODO',
         priority: 'MEDIUM',
@@ -631,6 +633,16 @@ describe('task endpoints', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ id: task.id, title: task.title });
+    expect(mocks.prisma.task.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: task.id,
+        assignments: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    }));
   });
 
   it('GET /api/tasks/:id reports missing tasks', async () => {
@@ -892,7 +904,7 @@ describe('task endpoints', () => {
 });
 
 describe('comment endpoints', () => {
-  it('GET /api/comments lists comments for an owned task', async () => {
+  it('GET /api/comments lists comments for an assigned task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
     mocks.prisma.comment.findMany.mockResolvedValue([comment]);
 
@@ -940,7 +952,7 @@ describe('comment endpoints', () => {
     expectError(response, 500, 'Failed to fetch comments');
   });
 
-  it('POST /api/comments creates a comment for an owned task', async () => {
+  it('POST /api/comments creates a comment for an assigned task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
     mocks.prisma.taskAssignment.findFirst.mockResolvedValue({ id: 'assignment-1' });
     mocks.prisma.comment.create.mockResolvedValue(comment);
@@ -964,16 +976,15 @@ describe('comment endpoints', () => {
     }));
   });
 
-  it('POST /api/comments rejects visible tasks when the user is not assigned', async () => {
-    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
-    mocks.prisma.taskAssignment.findFirst.mockResolvedValue(null);
+  it('POST /api/comments reports unassigned tasks as missing', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue(null);
 
     const response = await request(app)
       .post('/api/comments')
       .set('Authorization', authHeader())
       .send({ taskId: task.id, content: 'Comment' });
 
-    expectError(response, 403, 'Only assigned users can comment on this task');
+    expectError(response, 404, 'Task not found');
   });
 
   it.each([

@@ -55,16 +55,11 @@ export const findVisibleTaskIdForUser = (client: TaskQueryClient, userId: string
   client.task.findFirst({
     where: {
       id: taskId,
-      OR: [
-        { userId },
-        {
-          assignments: {
-            some: {
-              userId,
-            },
-          },
+      assignments: {
+        some: {
+          userId,
         },
-      ],
+      },
     },
     select: idSelect,
   });

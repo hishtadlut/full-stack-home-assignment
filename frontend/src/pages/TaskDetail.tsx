@@ -11,6 +11,7 @@ import { useAuth } from '../auth/useAuth';
 import { commentApi } from '../services/commentApi';
 import { taskApi } from '../services/taskApi';
 import { userApi } from '../services/userApi';
+import { isTaskAssignedToUser } from '../utils/taskVisibility';
 import type { Comment, Task, TaskEditableFields, User } from '../types';
 
 export const TaskDetail = () => {
@@ -59,22 +60,37 @@ export const TaskDetail = () => {
     setError(null);
 
     try {
-      const [taskResponse, commentsResponse, usersResponse] = await Promise.all([
-        taskApi.getTask(taskId),
-        commentApi.listComments(taskId),
-        userApi.listUsers(),
-      ]);
+      const taskResponse = await taskApi.getTask(taskId);
+
+      if (!isTaskAssignedToUser(taskResponse, user?.id)) {
+        setTask(null);
+        setComments([]);
+        setUsers([]);
+        setSelectedAssigneeIds([]);
+        setError('Task not found');
+        return;
+      }
 
       setTask(taskResponse);
-      setComments(commentsResponse);
-      setUsers(usersResponse);
-      setSelectedAssigneeIds(taskResponse.assignments?.map((assignment) => assignment.userId) ?? []);
+      setComments(taskResponse.comments ?? []);
+      setUsers(usersFromTask(taskResponse, user));
+      setSelectedAssigneeIds(assigneeIdsForTask(taskResponse));
+
+      userApi.listUsers()
+        .then(setUsers)
+        .catch(() => {
+          setUsers(usersFromTask(taskResponse, user));
+        });
     } catch (loadError) {
+      setTask(null);
+      setComments([]);
+      setUsers([]);
+      setSelectedAssigneeIds([]);
       setError(messageForError(loadError));
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [taskId, user]);
 
   useEffect(() => {
     void loadTask();
@@ -252,6 +268,25 @@ const messageForError = (error: unknown) => {
   }
 
   return 'Something went wrong';
+};
+
+const assigneeIdsForTask = (task: Task) =>
+  task.assignments?.map((assignment) => assignment.userId) ?? [];
+
+const usersFromTask = (task: Task, currentUser: User | null) => {
+  const usersById = new Map<string, User>();
+
+  task.assignments?.forEach((assignment) => {
+    if (assignment.user) {
+      usersById.set(assignment.user.id, assignment.user);
+    }
+  });
+
+  if (currentUser && task.userId === currentUser.id) {
+    usersById.set(currentUser.id, currentUser);
+  }
+
+  return [...usersById.values()];
 };
 
 const sameStringSet = (left: string[], right: string[]) => {
