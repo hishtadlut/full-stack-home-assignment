@@ -76,6 +76,29 @@ A clean stack returns:
 No changes. Your infrastructure matches the configuration.
 ```
 
+## Automatic Main Deploy
+
+`.github/workflows/deploy-production.yml` deploys production automatically after `.github/workflows/tests.yml` succeeds on a push to `main`. It can also be run manually from the `main` branch with `workflow_dispatch`.
+
+The workflow uses the Terraform-created GitHub Workload Identity provider and deployer service account:
+
+| Item | Value |
+|---|---|
+| Workload Identity provider | `projects/433790978420/locations/global/workloadIdentityPools/task-manager-prod-github/providers/github-oidc` |
+| GitHub deployer service account | `task-manager-gh-deploy@task-managment-497618.iam.gserviceaccount.com` |
+
+Deploy order:
+
+1. Check out the exact commit that passed CI.
+2. Build backend and frontend Docker images tagged with the short commit SHA.
+3. Push both images to Artifact Registry.
+4. Update the Cloud Run migration job to the new backend image.
+5. Execute the migration job with `prisma migrate deploy` and wait for it to finish.
+6. Update the API and web Cloud Run services to the new images.
+7. Smoke test `/health` and `/dashboard`.
+
+The migration is not run from a local machine and does not use a separate GitHub role. GitHub Actions authenticates as the same deployer service account, then starts the Terraform-managed Cloud Run job. The job itself runs as `task-manager-prod-run@task-managment-497618.iam.gserviceaccount.com` so it can read runtime secrets and reach Cloud SQL through the private network.
+
 ## Terraform-Managed Resources
 
 | File | Main resources |
