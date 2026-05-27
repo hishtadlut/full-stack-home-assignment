@@ -280,6 +280,24 @@ describe('app endpoints', () => {
 
     expectError(response, 400, 'Malformed JSON request body');
   });
+
+  it('allows local frontend origins for development and tests', async () => {
+    const response = await request(app)
+      .get('/health')
+      .set('Origin', 'http://localhost:5173');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+
+  it('does not emit CORS headers for untrusted origins', async () => {
+    const response = await request(app)
+      .get('/health')
+      .set('Origin', 'https://evil.example');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });
 
 describe('auth endpoints', () => {
