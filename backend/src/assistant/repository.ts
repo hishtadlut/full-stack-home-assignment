@@ -13,6 +13,7 @@ import {
   assistantChatMessageCountSelect,
   assistantChatSnapshotSelect,
   assistantChatTitleSelect,
+  assistantContextUserSelect,
   assistantDraftDecisionSelect,
   assistantRecentMessageSelect,
   assistantTaskContextSelect,
@@ -308,14 +309,37 @@ export const getRecentConversationForModel = async (chatId: string) =>
   });
 
 export const getTaskContextForAssistant = async (userId: string) => {
-  const tasks = await prisma.task.findMany({
-    where: { userId },
-    orderBy: { updatedAt: 'desc' },
-    take: ASSISTANT_TASK_CONTEXT_LIMIT,
-    select: assistantTaskContextSelect,
-  });
+  const [tasks, users] = await Promise.all([
+    prisma.task.findMany({
+      where: {
+        OR: [
+          { userId },
+          {
+            assignments: {
+              some: {
+                userId,
+              },
+            },
+          },
+        ],
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: ASSISTANT_TASK_CONTEXT_LIMIT,
+      select: assistantTaskContextSelect,
+    }),
+    prisma.user.findMany({
+      orderBy: {
+        username: 'asc',
+      },
+      select: assistantContextUserSelect,
+    }),
+  ]);
 
-  return tasks;
+  return {
+    currentUserId: userId,
+    users,
+    tasks,
+  };
 };
 
 const previewFor = (content: string) => {

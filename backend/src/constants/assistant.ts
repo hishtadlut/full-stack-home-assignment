@@ -16,6 +16,8 @@ export const ASSISTANT_DRAFT_OPERATION_TYPES = [
   'create_task',
   'update_task',
   'delete_task',
+  'assign_task',
+  'unassign_task',
   'create_comment',
   'delete_comment',
 ] as const;

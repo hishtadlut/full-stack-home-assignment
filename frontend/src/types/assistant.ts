@@ -24,6 +24,18 @@ export interface DeleteTaskDraftOperation extends AssistantDraftOperationBase {
   taskId: string;
 }
 
+export interface AssignTaskDraftOperation extends AssistantDraftOperationBase {
+  type: 'assign_task';
+  taskId: string;
+  userId: string;
+}
+
+export interface UnassignTaskDraftOperation extends AssistantDraftOperationBase {
+  type: 'unassign_task';
+  taskId: string;
+  userId: string;
+}
+
 export interface CreateCommentDraftOperation extends AssistantDraftOperationBase {
   type: 'create_comment';
   taskId: string;
@@ -41,6 +53,8 @@ export type AssistantDraftOperation =
   | CreateTaskDraftOperation
   | UpdateTaskDraftOperation
   | DeleteTaskDraftOperation
+  | AssignTaskDraftOperation
+  | UnassignTaskDraftOperation
   | CreateCommentDraftOperation
   | DeleteCommentDraftOperation;
 

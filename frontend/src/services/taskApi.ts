@@ -19,6 +19,10 @@ export const taskApi = {
     return api.patch<Task>(`/tasks/${taskId}`, taskData);
   },
 
+  async updateTaskAssignments(taskId: string, userIds: string[]) {
+    return api.patch<Task>(`/tasks/${taskId}/assignments`, { userIds });
+  },
+
   async deleteTask(taskId: string) {
     await api.delete(`/tasks/${taskId}`);
   },

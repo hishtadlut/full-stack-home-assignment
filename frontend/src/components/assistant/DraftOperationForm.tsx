@@ -71,6 +71,26 @@ const renderOperationFields = (
         </div>
       );
 
+    case 'assign_task':
+      return (
+        <AssignmentFields
+          taskId={operation.taskId}
+          userId={operation.userId}
+          disabled={disabled}
+          onChange={(fields) => onChange({ ...operation, ...fields })}
+        />
+      );
+
+    case 'unassign_task':
+      return (
+        <AssignmentFields
+          taskId={operation.taskId}
+          userId={operation.userId}
+          disabled={disabled}
+          onChange={(fields) => onChange({ ...operation, ...fields })}
+        />
+      );
+
     case 'create_comment':
       return (
         <div className="space-y-3">
@@ -189,6 +209,30 @@ const TaskPatchFields = ({ patch, disabled, onChange }: TaskPatchFieldsProps) =>
         />
       )}
     </div>
+  </div>
+);
+
+interface AssignmentFieldsProps {
+  taskId: string;
+  userId: string;
+  disabled: boolean;
+  onChange: (fields: { taskId: string; userId: string }) => void;
+}
+
+const AssignmentFields = ({ taskId, userId, disabled, onChange }: AssignmentFieldsProps) => (
+  <div className="space-y-3">
+    <TextInput
+      label="Task id"
+      value={taskId}
+      disabled={disabled}
+      onChange={(nextTaskId) => onChange({ taskId: nextTaskId, userId })}
+    />
+    <TextInput
+      label="User id"
+      value={userId}
+      disabled={disabled}
+      onChange={(nextUserId) => onChange({ taskId, userId: nextUserId })}
+    />
   </div>
 );
 

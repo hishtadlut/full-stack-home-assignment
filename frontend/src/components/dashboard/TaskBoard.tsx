@@ -10,11 +10,12 @@ import { formatEnumLabel } from '../../utils/taskFormatting';
 interface TaskSurfaceProps {
   tasks: Task[];
   loading: boolean;
+  currentUserId: string | null;
   onUpdate: (taskId: string, taskData: UpdateTaskInput) => Promise<void>;
   onDelete: (taskId: string) => Promise<void>;
 }
 
-export const TaskBoard = ({ tasks, loading, onUpdate, onDelete }: TaskSurfaceProps) => {
+export const TaskBoard = ({ tasks, loading, currentUserId, onUpdate, onDelete }: TaskSurfaceProps) => {
   if (loading) {
     return <LoadingState label="Loading board..." />;
   }
@@ -43,7 +44,13 @@ export const TaskBoard = ({ tasks, loading, onUpdate, onDelete }: TaskSurfacePro
                 </p>
               ) : (
                 columnTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} onUpdate={onUpdate} onDelete={onDelete} />
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    currentUserId={currentUserId}
+                    onUpdate={onUpdate}
+                    onDelete={onDelete}
+                  />
                 ))
               )}
             </div>
@@ -54,51 +61,62 @@ export const TaskBoard = ({ tasks, loading, onUpdate, onDelete }: TaskSurfacePro
   );
 };
 
-const TaskCard = ({ task, onUpdate, onDelete }: { task: Task } & Pick<TaskSurfaceProps, 'onUpdate' | 'onDelete'>) => (
-  <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md">
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <Link to={`/tasks/${task.id}`} className="block truncate text-base font-bold text-zinc-950 hover:text-cyan-700">
-          {task.title}
-        </Link>
-        <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{task.description || 'No description yet.'}</p>
+const TaskCard = ({
+  task,
+  currentUserId,
+  onUpdate,
+  onDelete,
+}: { task: Task } & Pick<TaskSurfaceProps, 'currentUserId' | 'onUpdate' | 'onDelete'>) => {
+  const canManageTask = task.userId === currentUserId;
+
+  return (
+    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link to={`/tasks/${task.id}`} className="block truncate text-base font-bold text-zinc-950 hover:text-cyan-700">
+            {task.title}
+          </Link>
+          <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{task.description || 'No description yet.'}</p>
+        </div>
+        <PriorityBadge priority={task.priority} />
       </div>
-      <PriorityBadge priority={task.priority} />
-    </div>
 
-    <div className="mt-4 flex flex-wrap items-center gap-2">
-      {TASK_STATUSES.map((status) => (
-        <button
-          key={status}
-          type="button"
-          onClick={() => onUpdate(task.id, { status })}
-          disabled={task.status === status}
-          className={`rounded border px-2 py-1 text-xs font-semibold ${
-            task.status === status
-              ? 'border-zinc-950 bg-zinc-950 text-white'
-              : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
-          } disabled:cursor-default`}
-        >
-          {formatEnumLabel(status)}
-        </button>
-      ))}
-    </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {TASK_STATUSES.map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => onUpdate(task.id, { status })}
+            disabled={!canManageTask || task.status === status}
+            className={`rounded border px-2 py-1 text-xs font-semibold ${
+              task.status === status
+                ? 'border-zinc-950 bg-zinc-950 text-white'
+                : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50'
+            } disabled:cursor-default disabled:opacity-60`}
+          >
+            {formatEnumLabel(status)}
+          </button>
+        ))}
+      </div>
 
-    <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3">
-      <Link to={`/tasks/${task.id}`} className="text-sm font-semibold text-cyan-700 hover:text-cyan-900">
-        Open details
-      </Link>
-      <button
-        type="button"
-        onClick={() => onDelete(task.id)}
-        className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-sm font-semibold text-red-700 hover:bg-red-50"
-      >
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-        Delete
-      </button>
-    </div>
-  </article>
-);
+      <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3">
+        <Link to={`/tasks/${task.id}`} className="text-sm font-semibold text-cyan-700 hover:text-cyan-900">
+          Open details
+        </Link>
+        {canManageTask && (
+          <button
+            type="button"
+            onClick={() => onDelete(task.id)}
+            className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-sm font-semibold text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Delete
+          </button>
+        )}
+      </div>
+    </article>
+  );
+};
 
 const DashboardEmptyState = () => (
   <EmptyState

@@ -98,6 +98,7 @@ export const Dashboard = () => {
           <TaskBoard
             tasks={tasks}
             loading={loading}
+            currentUserId={user?.id ?? null}
             onUpdate={handleUpdateTask}
             onDelete={handleDeleteTask}
           />
@@ -105,6 +106,7 @@ export const Dashboard = () => {
           <TaskTable
             tasks={tasks}
             loading={loading}
+            currentUserId={user?.id ?? null}
             onUpdate={handleUpdateTask}
             onDelete={handleDeleteTask}
           />

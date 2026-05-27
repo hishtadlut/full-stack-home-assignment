@@ -53,6 +53,11 @@ const executeOperation = async (
           status: operation.input.status || 'TODO',
           priority: operation.input.priority || 'MEDIUM',
           userId,
+          assignments: {
+            create: {
+              userId,
+            },
+          },
         },
       });
 
@@ -109,8 +114,58 @@ const executeOperation = async (
       };
     }
 
-    case 'create_comment': {
+    case 'assign_task': {
       await assertTaskBelongsToUser(tx, userId, operation.taskId);
+      await assertUserExists(tx, operation.userId);
+
+      const existingAssignment = await tx.taskAssignment.findFirst({
+        where: {
+          taskId: operation.taskId,
+          userId: operation.userId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existingAssignment) {
+        await tx.taskAssignment.create({
+          data: {
+            taskId: operation.taskId,
+            userId: operation.userId,
+          },
+        });
+      }
+
+      return {
+        operationId: operation.id,
+        type: operation.type,
+        ok: true,
+        entityId: operation.userId,
+        taskId: operation.taskId,
+      };
+    }
+
+    case 'unassign_task': {
+      await assertTaskBelongsToUser(tx, userId, operation.taskId);
+      await tx.taskAssignment.deleteMany({
+        where: {
+          taskId: operation.taskId,
+          userId: operation.userId,
+        },
+      });
+
+      return {
+        operationId: operation.id,
+        type: operation.type,
+        ok: true,
+        entityId: operation.userId,
+        taskId: operation.taskId,
+      };
+    }
+
+    case 'create_comment': {
+      await assertTaskVisibleToAssignedUser(tx, userId, operation.taskId);
 
       const comment = await tx.comment.create({
         data: {
@@ -162,6 +217,62 @@ const assertTaskBelongsToUser = async (
 
   if (!task) {
     throw new DraftExecutionError('Task not found');
+  }
+};
+
+const assertTaskVisibleToAssignedUser = async (
+  tx: TransactionClient,
+  userId: string,
+  taskId: string,
+) => {
+  const task = await tx.task.findFirst({
+    where: {
+      id: taskId,
+      OR: [
+        { userId },
+        {
+          assignments: {
+            some: {
+              userId,
+            },
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      assignments: {
+        where: {
+          userId,
+        },
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new DraftExecutionError('Task not found');
+  }
+
+  if (task.assignments.length === 0) {
+    throw new DraftExecutionError('Only assigned users can comment on this task');
+  }
+};
+
+const assertUserExists = async (tx: TransactionClient, userId: string) => {
+  const user = await tx.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!user) {
+    throw new DraftExecutionError('User not found');
   }
 };
 

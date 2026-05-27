@@ -140,4 +140,36 @@ describe('assistant draft validation', () => {
       label: 'Delete comment',
     });
   });
+
+  it('normalizes assignment operations with trimmed ids and fallback labels', () => {
+    const normalizedDraft = normalizeDraft({
+      schemaVersion: 1,
+      summary: 'Change assignees',
+      operations: [
+        {
+          type: 'assign_task',
+          taskId: ' task-1 ',
+          userId: ' user-2 ',
+        },
+        {
+          type: 'unassign_task',
+          taskId: ' task-1 ',
+          userId: ' user-3 ',
+        },
+      ],
+    });
+
+    expect(normalizedDraft.operations[0]).toMatchObject({
+      id: 'operation_1',
+      label: 'Assign task',
+      taskId: 'task-1',
+      userId: 'user-2',
+    });
+    expect(normalizedDraft.operations[1]).toMatchObject({
+      id: 'operation_2',
+      label: 'Unassign task',
+      taskId: 'task-1',
+      userId: 'user-3',
+    });
+  });
 });

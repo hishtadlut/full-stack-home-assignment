@@ -7,18 +7,24 @@ import { TaskEditPanel } from '../components/task-detail/TaskEditPanel';
 import { TaskNotFound } from '../components/task-detail/TaskNotFound';
 import { TaskSidePanels } from '../components/task-detail/TaskSidePanels';
 import { LoadingState } from '../components/ui/LoadingState';
+import { useAuth } from '../auth/useAuth';
 import { commentApi } from '../services/commentApi';
 import { taskApi } from '../services/taskApi';
-import type { Comment, Task, TaskEditableFields } from '../types';
+import { userApi } from '../services/userApi';
+import type { Comment, Task, TaskEditableFields, User } from '../types';
 
 export const TaskDetail = () => {
   const { taskId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +41,15 @@ export const TaskDetail = () => {
     };
   }, [task]);
 
+  const assignedUserIds = useMemo(
+    () => task?.assignments?.map((assignment) => assignment.userId) ?? [],
+    [task?.assignments],
+  );
+
+  const canManageAssignments = Boolean(task && user && task.userId === user.id);
+  const canComment = Boolean(user && assignedUserIds.includes(user.id));
+  const assignmentsChanged = !sameStringSet(assignedUserIds, selectedAssigneeIds);
+
   const loadTask = useCallback(async () => {
     if (!taskId) {
       return;
@@ -44,13 +59,16 @@ export const TaskDetail = () => {
     setError(null);
 
     try {
-      const [taskResponse, commentsResponse] = await Promise.all([
+      const [taskResponse, commentsResponse, usersResponse] = await Promise.all([
         taskApi.getTask(taskId),
         commentApi.listComments(taskId),
+        userApi.listUsers(),
       ]);
 
       setTask(taskResponse);
       setComments(commentsResponse);
+      setUsers(usersResponse);
+      setSelectedAssigneeIds(taskResponse.assignments?.map((assignment) => assignment.userId) ?? []);
     } catch (loadError) {
       setError(messageForError(loadError));
     } finally {
@@ -85,6 +103,11 @@ export const TaskDetail = () => {
     event.preventDefault();
 
     if (!taskId || commentText.trim().length === 0) {
+      return;
+    }
+
+    if (!canComment) {
+      setError('Only assigned users can comment on this task');
       return;
     }
 
@@ -134,6 +157,33 @@ export const TaskDetail = () => {
     }
   };
 
+  const handleAssigneeToggle = (userId: string) => {
+    setSelectedAssigneeIds((current) =>
+      current.includes(userId)
+        ? current.filter((selectedUserId) => selectedUserId !== userId)
+        : [...current, userId],
+    );
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!taskId) {
+      return;
+    }
+
+    setAssignmentSaving(true);
+    setError(null);
+
+    try {
+      const updatedTask = await taskApi.updateTaskAssignments(taskId, selectedAssigneeIds);
+      setTask(updatedTask);
+      setSelectedAssigneeIds(updatedTask.assignments?.map((assignment) => assignment.userId) ?? []);
+    } catch (assignmentError) {
+      setError(messageForError(assignmentError));
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <TaskDetailShell onTasksChanged={loadTask}>
@@ -158,6 +208,7 @@ export const TaskDetail = () => {
             task={task}
             editing={editing}
             saving={saving}
+            canManageTask={canManageAssignments}
             error={error}
             onToggleEdit={() => setEditing((current) => !current)}
             onDelete={handleDeleteTask}
@@ -171,13 +222,25 @@ export const TaskDetail = () => {
             comments={comments}
             commentText={commentText}
             saving={saving}
+            canComment={canComment}
+            currentUserId={user?.id ?? null}
+            taskOwnerId={task.userId}
             onCommentTextChange={setCommentText}
             onAddComment={handleAddComment}
             onDeleteComment={handleDeleteComment}
           />
         </section>
 
-        <TaskSidePanels task={task} />
+        <TaskSidePanels
+          task={task}
+          users={users}
+          selectedAssigneeIds={selectedAssigneeIds}
+          assignmentSaving={assignmentSaving}
+          assignmentsChanged={assignmentsChanged}
+          canManageAssignments={canManageAssignments}
+          onAssigneeToggle={handleAssigneeToggle}
+          onSaveAssignments={handleSaveAssignments}
+        />
       </div>
     </TaskDetailShell>
   );
@@ -189,4 +252,13 @@ const messageForError = (error: unknown) => {
   }
 
   return 'Something went wrong';
+};
+
+const sameStringSet = (left: string[], right: string[]) => {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightValues = new Set(right);
+  return left.every((value) => rightValues.has(value));
 };

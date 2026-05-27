@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { isString } from '../middleware/validation';
 import { isRecordNotFoundError, prisma } from '../db/prisma';
 import { findTaskIdForUser, taskDetailInclude, taskListInclude } from '../db/taskQueries';
+import { idSelect } from '../db/selects';
 
 export const getTasks = async (req: AuthRequest, res: Response) => {
   try {
@@ -13,15 +14,30 @@ export const getTasks = async (req: AuthRequest, res: Response) => {
 
     const tasks = await prisma.task.findMany({
       where: {
-        userId,
+        AND: [
+          {
+            OR: [
+              { userId },
+              {
+                assignments: {
+                  some: {
+                    userId,
+                  },
+                },
+              },
+            ],
+          },
+          ...(search
+            ? [{
+                OR: [
+                  { title: { contains: search, mode: 'insensitive' as const } },
+                  { description: { contains: search, mode: 'insensitive' as const } },
+                ],
+              }]
+            : []),
+        ],
         ...(status && { status }),
         ...(priority && { priority }),
-        ...(search && {
-          OR: [
-            { title: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-          ],
-        }),
       },
       include: taskListInclude,
       orderBy: {
@@ -48,7 +64,13 @@ export const createTask = async (req: AuthRequest, res: Response) => {
         status: status || 'TODO',
         priority: priority || 'MEDIUM',
         userId,
+        assignments: {
+          create: {
+            userId,
+          },
+        },
       },
+      include: taskListInclude,
     });
 
     res.status(201).json(task);
@@ -86,6 +108,68 @@ export const updateTask = async (req: AuthRequest, res: Response) => {
 
     console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task' });
+  }
+};
+
+export const updateTaskAssignments = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { id } = req.params;
+    const { userIds } = req.body as { userIds: string[] };
+
+    const task = await findTaskIdForUser(prisma, userId, id);
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (userIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: {
+          id: {
+            in: userIds,
+          },
+        },
+        select: idSelect,
+      });
+
+      if (users.length !== userIds.length) {
+        return res.status(400).json({ error: 'One or more assignees do not exist' });
+      }
+    }
+
+    const updatedTask = await prisma.$transaction(async (tx) => {
+      await tx.taskAssignment.deleteMany({
+        where: {
+          taskId: id,
+        },
+      });
+
+      if (userIds.length > 0) {
+        await tx.taskAssignment.createMany({
+          data: userIds.map((assigneeUserId) => ({
+            taskId: id,
+            userId: assigneeUserId,
+          })),
+        });
+      }
+
+      return tx.task.findUnique({
+        where: {
+          id,
+        },
+        include: taskDetailInclude,
+      });
+    });
+
+    if (!updatedTask) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    res.json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task assignments:', error);
+    res.status(500).json({ error: 'Failed to update task assignments' });
   }
 };
 
@@ -128,10 +212,19 @@ export const getTaskById = async (req: AuthRequest, res: Response) => {
     const userId = req.userId!;
     const { id } = req.params;
 
-    const task = await prisma.task.findUnique({
+    const task = await prisma.task.findFirst({
       where: {
         id,
-        userId,
+        OR: [
+          { userId },
+          {
+            assignments: {
+              some: {
+                userId,
+              },
+            },
+          },
+        ],
       },
       include: taskDetailInclude,
     });

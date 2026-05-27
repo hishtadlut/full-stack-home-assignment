@@ -1,15 +1,24 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { prisma } from '../db/prisma';
-import { commentWithUserInclude, findCommentForTaskOwner, taskExistsForUser } from '../db/taskQueries';
+import {
+  commentWithUserInclude,
+  findCommentForAuthorOrTaskOwner,
+  taskAssignedToUser,
+  taskVisibleToUser,
+} from '../db/taskQueries';
 
 export const createComment = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
     const { taskId, content } = req.body;
 
-    if (!(await taskExistsForUser(prisma, userId, taskId))) {
+    if (!(await taskVisibleToUser(prisma, userId, taskId))) {
       return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (!(await taskAssignedToUser(prisma, userId, taskId))) {
+      return res.status(403).json({ error: 'Only assigned users can comment on this task' });
     }
 
     const comment = await prisma.comment.create({
@@ -35,7 +44,7 @@ export const getComments = async (req: AuthRequest, res: Response) => {
 
     const taskIdString = taskId as string;
 
-    if (!(await taskExistsForUser(prisma, userId, taskIdString))) {
+    if (!(await taskVisibleToUser(prisma, userId, taskIdString))) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
@@ -61,7 +70,7 @@ export const deleteComment = async (req: AuthRequest, res: Response) => {
     const userId = req.userId!;
     const { id } = req.params;
 
-    const comment = await findCommentForTaskOwner(prisma, userId, id);
+    const comment = await findCommentForAuthorOrTaskOwner(prisma, userId, id);
 
     if (!comment) {
       return res.status(404).json({ error: 'Comment not found' });

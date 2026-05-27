@@ -8,6 +8,9 @@ interface TaskCommentsPanelProps {
   comments: Comment[];
   commentText: string;
   saving: boolean;
+  canComment: boolean;
+  currentUserId: string | null;
+  taskOwnerId: string;
   onCommentTextChange: (value: string) => void;
   onAddComment: (event: FormEvent<HTMLFormElement>) => Promise<void> | void;
   onDeleteComment: (commentId: string) => Promise<void> | void;
@@ -17,6 +20,9 @@ export const TaskCommentsPanel = ({
   comments,
   commentText,
   saving,
+  canComment,
+  currentUserId,
+  taskOwnerId,
   onCommentTextChange,
   onAddComment,
   onDeleteComment,
@@ -34,28 +40,34 @@ export const TaskCommentsPanel = ({
       </div>
     </div>
 
-    <form onSubmit={onAddComment} className="mb-5 grid gap-3">
-      <label htmlFor="comment-content" className="text-sm font-semibold text-zinc-700">
-        Add comment
-      </label>
-      <textarea
-        id="comment-content"
-        value={commentText}
-        onChange={(event) => onCommentTextChange(event.target.value)}
-        rows={4}
-        placeholder="Add context, decisions, blockers, or handoff notes."
-        className="w-full resize-none rounded border border-zinc-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-      />
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={saving || commentText.trim().length === 0}
-          className="rounded bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
-        >
-          Add Comment
-        </button>
-      </div>
-    </form>
+    {canComment ? (
+      <form onSubmit={onAddComment} className="mb-5 grid gap-3">
+        <label htmlFor="comment-content" className="text-sm font-semibold text-zinc-700">
+          Add comment
+        </label>
+        <textarea
+          id="comment-content"
+          value={commentText}
+          onChange={(event) => onCommentTextChange(event.target.value)}
+          rows={4}
+          placeholder="Add context, decisions, blockers, or handoff notes."
+          className="w-full resize-none rounded border border-zinc-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+        />
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={saving || commentText.trim().length === 0}
+            className="rounded bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+          >
+            Add Comment
+          </button>
+        </div>
+      </form>
+    ) : (
+      <p role="note" className="mb-5 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        Only assigned users can add comments to this task.
+      </p>
+    )}
 
     <div className="grid gap-3">
       {comments.length === 0 ? (
@@ -77,15 +89,17 @@ export const TaskCommentsPanel = ({
                   <p className="text-xs text-zinc-500">{formatFullDateTime(comment.createdAt)}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onDeleteComment(comment.id)}
-                disabled={saving}
-                className={`${buttonStyles('danger')} px-2 py-1 disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-                Delete
-              </button>
+              {(currentUserId === taskOwnerId || currentUserId === comment.userId) && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteComment(comment.id)}
+                  disabled={saving}
+                  className={`${buttonStyles('danger')} px-2 py-1 disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  Delete
+                </button>
+              )}
             </div>
             <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-700">{comment.content}</p>
           </article>

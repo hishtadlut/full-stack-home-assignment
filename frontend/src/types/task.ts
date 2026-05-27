@@ -70,6 +70,10 @@ export interface TaskAssignment {
   user?: User;
 }
 
+export interface UserListResponse {
+  users: User[];
+}
+
 export interface Comment {
   id: string;
   content: string;
