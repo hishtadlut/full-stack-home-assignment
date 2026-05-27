@@ -7,3 +7,4 @@ dist
 *.log
 .vite
 SOLUTION_KEY.md
+output/playwright/

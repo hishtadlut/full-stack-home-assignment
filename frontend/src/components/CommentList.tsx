@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import type { Comment } from '../types';
 
 export const CommentList = ({ taskId }: { taskId: string }) => {
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export const CommentList = ({ taskId }: { taskId: string }) => {
 
   return (
     <div className="space-y-4">
-      {comments.map((comment: any) => (
+      {comments.map((comment) => (
         <div key={comment.id} className="border rounded p-3">
           <div className="flex items-center gap-2 mb-2">
             <span className="font-semibold">
@@ -32,10 +32,7 @@ export const CommentList = ({ taskId }: { taskId: string }) => {
               {new Date(comment.createdAt).toLocaleDateString()}
             </span>
           </div>
-          <div
-            dangerouslySetInnerHTML={{ __html: comment.content }}
-            className="text-gray-700"
-          />
+          <p className="whitespace-pre-wrap text-gray-700">{comment.content}</p>
         </div>
       ))}
     </div>

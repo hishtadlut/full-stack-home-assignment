@@ -139,7 +139,7 @@ export const TaskList = ({ tasks, loading, updateTask, deleteTask }: TaskListPro
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <h3 className="font-semibold text-lg">{task.title}</h3>
-                <p className="text-gray-600 mt-1" dangerouslySetInnerHTML={{ __html: task.description || '' }}></p>
+                <p className="text-gray-600 mt-1 whitespace-pre-wrap">{task.description || ''}</p>
                 <div className="flex gap-2 mt-2">
                   <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
                     {task.status}

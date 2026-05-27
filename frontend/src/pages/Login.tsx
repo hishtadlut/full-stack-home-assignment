@@ -1,58 +1,92 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, ClipboardList } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await login(email, password);
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setBusy(true);
+
+    try {
+      await login(email, password);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Login failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8">
-        <h2 className="text-2xl font-bold mb-6">Login</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            />
+    <main className="grid min-h-screen bg-zinc-50 text-zinc-950 lg:grid-cols-[minmax(0,1fr)_28rem]">
+      <section className="flex min-h-[18rem] items-center border-b border-zinc-200 bg-white px-6 py-10 lg:border-b-0 lg:border-r lg:px-12">
+        <div className="max-w-2xl">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded bg-cyan-50 text-cyan-700">
+            <ClipboardList className="h-6 w-6" aria-hidden="true" />
           </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded px-3 py-2"
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
-          >
-            Login
-          </button>
-        </form>
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600">
+          <h1 className="mt-5 text-4xl font-bold tracking-normal">Task Manager</h1>
+        </div>
+      </section>
+
+      <section className="flex items-center px-6 py-10">
+        <div className="w-full rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-bold">Login</h2>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold text-zinc-700">Email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-semibold text-zinc-700">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                className="mt-1 w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                required
+              />
+            </div>
+
+            {error && (
+              <div role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex w-full items-center justify-center gap-2 rounded bg-zinc-950 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            >
+              Login
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </form>
+          <p className="mt-4 text-center text-sm text-zinc-600">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-500 hover:text-blue-600 underline">
+            <Link to="/register" className="font-semibold text-cyan-700 hover:text-cyan-900 underline">
               Register here
             </Link>
           </p>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };

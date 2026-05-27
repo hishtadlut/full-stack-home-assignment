@@ -1,18 +1,35 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { TASK_PRIORITIES, TASK_PRIORITY, TASK_STATUSES, TASK_STATUS } from '../types';
 import type { TaskEditableFields, TaskPriority, TaskStatus } from '../types';
 
 interface TaskFormProps {
   onSubmit: (taskData: TaskEditableFields) => Promise<void> | void;
+  initialValues?: TaskEditableFields;
+  submitLabel?: string;
+  busy?: boolean;
 }
 
-export const TaskForm = ({ onSubmit }: TaskFormProps) => {
+const blankTask: TaskEditableFields = {
+  title: '',
+  description: '',
+  status: TASK_STATUS.Todo,
+  priority: TASK_PRIORITY.Medium,
+};
+
+export const TaskForm = ({
+  onSubmit,
+  initialValues = blankTask,
+  submitLabel = 'Create Task',
+  busy = false,
+}: TaskFormProps) => {
   const [formData, setFormData] = useState<TaskEditableFields>({
-    title: '',
-    description: '',
-    status: TASK_STATUS.Todo,
-    priority: TASK_PRIORITY.Medium,
+    ...initialValues,
   });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFormData(initialValues);
+  }, [initialValues]);
 
   const handleFieldChange = <Field extends keyof TaskEditableFields>(
     field: Field,
@@ -24,69 +41,96 @@ export const TaskForm = ({ onSubmit }: TaskFormProps) => {
     }));
   };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSubmit(formData);
+    setError(null);
+
+    if (formData.title.trim().length === 0) {
+      setError('Title is required');
+      return;
+    }
+
+    await onSubmit({
+      ...formData,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+    });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium mb-1">Title</label>
+        <label htmlFor="task-title" className="block text-sm font-medium mb-1">Title</label>
         <input
+          id="task-title"
           type="text"
           name="title"
           value={formData.title}
           onChange={(e) => handleFieldChange('title', e.target.value)}
-          className="w-full border rounded px-3 py-2"
+          className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+          required
         />
       </div>
       <div>
-        <label className="block text-sm font-medium mb-1">Description</label>
+        <label htmlFor="task-description" className="block text-sm font-medium mb-1">Description</label>
         <textarea
+          id="task-description"
           name="description"
           value={formData.description}
           onChange={(e) => handleFieldChange('description', e.target.value)}
-          className="w-full border rounded px-3 py-2"
+          className="w-full resize-none rounded border border-gray-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
           rows={4}
         />
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Status</label>
-        <select
-          name="status"
-          value={formData.status}
-          onChange={(e) => handleFieldChange('status', e.target.value as TaskStatus)}
-          className="w-full border rounded px-3 py-2"
-        >
-          {TASK_STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="task-status" className="block text-sm font-medium mb-1">Status</label>
+          <select
+            id="task-status"
+            name="status"
+            value={formData.status}
+            onChange={(e) => handleFieldChange('status', e.target.value as TaskStatus)}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+          >
+            {TASK_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {formatOption(status)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="task-priority" className="block text-sm font-medium mb-1">Priority</label>
+          <select
+            id="task-priority"
+            name="priority"
+            value={formData.priority}
+            onChange={(e) => handleFieldChange('priority', e.target.value as TaskPriority)}
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+          >
+            {TASK_PRIORITIES.map((priority) => (
+              <option key={priority} value={priority}>
+                {formatOption(priority)}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Priority</label>
-        <select
-          name="priority"
-          value={formData.priority}
-          onChange={(e) => handleFieldChange('priority', e.target.value as TaskPriority)}
-          className="w-full border rounded px-3 py-2"
-        >
-          {TASK_PRIORITIES.map((priority) => (
-            <option key={priority} value={priority}>
-              {priority}
-            </option>
-          ))}
-        </select>
-      </div>
+      {error && <p role="alert" className="text-sm font-medium text-red-700">{error}</p>}
       <button
         type="submit"
-        className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+        disabled={busy}
+        className="w-full rounded bg-cyan-700 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-gray-300"
       >
-        Create Task
+        {busy ? 'Saving...' : submitLabel}
       </button>
     </form>
   );
 };
+
+const formatOption = (value: string) =>
+  value
+    .toLowerCase()
+    .split('_')
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');

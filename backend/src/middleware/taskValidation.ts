@@ -5,7 +5,7 @@ import { hasAnyField, hasField, hasText, hasValue, isOneOf, isString } from './v
 const TASK_EDITABLE_FIELDS = ['title', 'description', 'status', 'priority'] as const;
 
 export const validateTaskListQuery = (req: Request, res: Response, next: NextFunction) => {
-  const { search, status } = req.query;
+  const { search, status, priority } = req.query;
 
   if (hasValue(search)) {
     if (!isString(search)) {
@@ -19,6 +19,10 @@ export const validateTaskListQuery = (req: Request, res: Response, next: NextFun
 
   if (hasValue(status) && !isOneOf(status, TASK_STATUSES)) {
     return res.status(400).json({ error: 'Invalid task status' });
+  }
+
+  if (hasValue(priority) && !isOneOf(priority, TASK_PRIORITIES)) {
+    return res.status(400).json({ error: 'Invalid task priority' });
   }
 
   next();

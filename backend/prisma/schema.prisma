@@ -20,6 +20,7 @@ model User {
   tasks       Task[]
   assignments TaskAssignment[]
   comments    Comment[]
+  assistantChats AssistantChat[]
 }
 
 model Task {
@@ -78,4 +79,57 @@ model TaskTag {
 
   task Task @relation(fields: [taskId], references: [id])
   tag  Tag  @relation(fields: [tagId], references: [id])
+}
+
+model AssistantChat {
+  id                 String             @id @default(cuid())
+  userId             String
+  title              String?
+  summary            String?
+  lastMessagePreview String             @default("Fresh assistant chat")
+  messageCount       Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  lastMessageAt      DateTime           @default(now())
+
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages           AssistantMessage[]
+  drafts             AssistantDraft[]
+
+  @@index([userId, lastMessageAt])
+}
+
+model AssistantMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  sequence  Int
+  role      String
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  chat      AssistantChat  @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  draft     AssistantDraft?
+
+  @@unique([chatId, sequence])
+  @@index([chatId, createdAt])
+}
+
+model AssistantDraft {
+  id                 String   @id @default(cuid())
+  chatId             String
+  assistantMessageId String?  @unique
+  status             String   @default("PENDING")
+  originalDraft      Json
+  approvedDraft      Json?
+  executionResult    Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  decidedAt          DateTime?
+  executedAt         DateTime?
+
+  chat               AssistantChat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  assistantMessage   AssistantMessage? @relation(fields: [assistantMessageId], references: [id], onDelete: SetNull)
+
+  @@index([chatId, status])
 }

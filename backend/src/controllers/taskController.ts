@@ -2,18 +2,20 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { isString } from '../middleware/validation';
 import { isRecordNotFoundError, prisma } from '../db/prisma';
-import { taskDetailInclude, taskListInclude } from '../db/taskQueries';
+import { findTaskIdForUser, taskDetailInclude, taskListInclude } from '../db/taskQueries';
 
 export const getTasks = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
     const search = isString(req.query.search) ? req.query.search.trim() : undefined;
     const status = isString(req.query.status) ? req.query.status : undefined;
+    const priority = isString(req.query.priority) ? req.query.priority : undefined;
 
     const tasks = await prisma.task.findMany({
       where: {
         userId,
         ...(status && { status }),
+        ...(priority && { priority }),
         ...(search && {
           OR: [
             { title: { contains: search, mode: 'insensitive' } },
@@ -22,6 +24,9 @@ export const getTasks = async (req: AuthRequest, res: Response) => {
         }),
       },
       include: taskListInclude,
+      orderBy: {
+        updatedAt: 'desc',
+      },
     });
 
     res.json(tasks);
@@ -89,12 +94,23 @@ export const deleteTask = async (req: AuthRequest, res: Response) => {
     const userId = req.userId!;
     const { id } = req.params;
 
-    await prisma.task.delete({
-      where: {
-        id,
-        userId,
-      },
+    const deleted = await prisma.$transaction(async (tx) => {
+      const task = await findTaskIdForUser(tx, userId, id);
+
+      if (!task) {
+        return false;
+      }
+
+      await tx.comment.deleteMany({ where: { taskId: id } });
+      await tx.taskAssignment.deleteMany({ where: { taskId: id } });
+      await tx.taskTag.deleteMany({ where: { taskId: id } });
+      await tx.task.delete({ where: { id } });
+      return true;
     });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
 
     res.status(204).send();
   } catch (error) {
