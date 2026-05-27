@@ -6,6 +6,13 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection = var.deletion_protection
   labels              = local.labels
 
+  lifecycle {
+    ignore_changes = [
+      client,
+      client_version,
+    ]
+  }
+
   template {
     service_account                  = google_service_account.runtime.email
     timeout                          = var.api_timeout
@@ -89,6 +96,13 @@ resource "google_cloud_run_v2_service" "web" {
   deletion_protection = var.deletion_protection
   labels              = local.labels
 
+  lifecycle {
+    ignore_changes = [
+      client,
+      client_version,
+    ]
+  }
+
   template {
     service_account                  = google_service_account.runtime.email
     timeout                          = var.web_timeout
@@ -132,6 +146,13 @@ resource "google_cloud_run_v2_job" "migrate" {
   location            = var.region
   deletion_protection = var.deletion_protection
   labels              = local.labels
+
+  lifecycle {
+    ignore_changes = [
+      client,
+      client_version,
+    ]
+  }
 
   template {
     template {
