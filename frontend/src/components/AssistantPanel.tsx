@@ -148,22 +148,22 @@ export const AssistantPanel = ({ onTasksChanged }: AssistantPanelProps) => {
             <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-3">
               {pendingDraft && (
                 <p id="task-assistant-pending-draft" className="mb-2 text-xs font-medium text-amber-700">
-                  Resolve the pending draft before sending another message.
+                  You can approve this draft, discard it, or ask me to revise it.
                 </p>
               )}
               <div className="flex gap-2">
                 <input
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  disabled={sending || Boolean(pendingDraft)}
+                  disabled={sending}
                   aria-label="Message task assistant"
                   aria-describedby={pendingDraft ? 'task-assistant-pending-draft' : undefined}
-                  placeholder="Ask me to find, create, update, or delete tasks..."
+                  placeholder={pendingDraft ? 'Ask for a draft change, or ask another question...' : 'Ask me to find, create, update, or delete tasks...'}
                   className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:bg-gray-100"
                 />
                 <button
                   type="submit"
-                  disabled={sending || Boolean(pendingDraft) || input.trim().length === 0}
+                  disabled={sending || input.trim().length === 0}
                   className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
                   Send

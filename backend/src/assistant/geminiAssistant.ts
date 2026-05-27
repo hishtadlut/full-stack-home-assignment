@@ -11,6 +11,7 @@ let aiClient: GoogleGenAIClient | null = null;
 export const generateAssistantResponse = async ({
   userMessage,
   recentMessages,
+  pendingDraft,
   taskContext,
 }: GenerateAssistantResponseInput): Promise<AssistantModelResponse> => {
   const [{ ThinkingLevel }, client] = await Promise.all([getGenAiModule(), getAiClient()]);
@@ -19,7 +20,7 @@ export const generateAssistantResponse = async ({
     model: ASSISTANT_MODEL,
     config: {
       thinkingConfig: {
-        thinkingLevel: ThinkingLevel.MINIMAL,
+        thinkingLevel: ThinkingLevel.MEDIUM,
       },
       responseMimeType: 'application/json',
       responseJsonSchema: assistantResponseJsonSchema,
@@ -29,7 +30,7 @@ export const generateAssistantResponse = async ({
         role: 'user',
         parts: [
           {
-            text: buildPrompt(userMessage, recentMessages, taskContext),
+            text: buildPrompt(userMessage, recentMessages, pendingDraft, taskContext),
           },
         ],
       },
@@ -69,6 +70,7 @@ const getAiClient = async () => {
 const buildPrompt = (
   userMessage: string,
   recentMessages: GenerateAssistantResponseInput['recentMessages'],
+  pendingDraft: unknown,
   taskContext: unknown,
 ) => `
 You are a task-management assistant embedded in a production task app.
@@ -86,6 +88,14 @@ Write operations require a draft:
 - The UI will render this draft as an editable form and the backend will execute it only after approval.
 - If the user references a task or comment ambiguously, ask a follow-up question and return draft: null.
 - If a requested operation is not supported by the available API, explain that and return draft: null.
+
+Draft revision behavior:
+- CURRENT_PENDING_DRAFT is the active unapproved draft, if any.
+- If CURRENT_PENDING_DRAFT exists and the user asks to fix, change, update, adjust, rename, or otherwise modify "it", "this", "the draft", or a field without naming a saved task, revise CURRENT_PENDING_DRAFT.
+- A revision must return a complete replacement draft with every operation still present, not only the changed field.
+- Do not ask which saved task the user means when the request clearly refers to CURRENT_PENDING_DRAFT.
+- If no pending draft exists but RECENT_MESSAGES contains a discarded or superseded draft and the user asks to change that prior draft, create a new draft based on that prior draft.
+- If the user asks a normal question while a draft is pending, answer the question and return draft: null. The pending draft remains available.
 
 Supported task statuses: ${TASK_STATUSES.join(', ')}
 Supported task priorities: ${TASK_PRIORITIES.join(', ')}
@@ -114,12 +124,16 @@ Return only JSON matching this shape:
 
 For create_comment, input must contain only content.
 For create_task, input must contain title and may contain description/status/priority.
+For create_task, infer useful missing fields only when the user intent is clear.
 For update_task, patch must contain at least one task field.
 For delete_task, include taskId and no input or patch.
 For delete_comment, include commentId and no input or patch.
 
 RECENT_MESSAGES:
 ${JSON.stringify([...recentMessages].reverse(), null, 2)}
+
+CURRENT_PENDING_DRAFT:
+${JSON.stringify(pendingDraft, null, 2)}
 
 TASK_CONTEXT:
 ${JSON.stringify(taskContext, null, 2)}

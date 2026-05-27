@@ -101,23 +101,23 @@ export const AssistantWorkspace = () => {
           <form onSubmit={handleSubmit} className="border-t border-zinc-200 bg-white p-4">
             {pendingDraft && (
               <p id="assistant-page-pending-draft" className="mb-2 text-xs font-semibold text-amber-700">
-                Resolve the pending draft before sending another message.
+                You can approve this draft, discard it, or ask me to revise it.
               </p>
             )}
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                disabled={sending || Boolean(pendingDraft)}
+                disabled={sending}
                 rows={3}
                 aria-label="Message task assistant"
                 aria-describedby={pendingDraft ? 'assistant-page-pending-draft' : undefined}
-                placeholder="Message task assistant..."
+                placeholder={pendingDraft ? 'Ask for a draft change, or ask another question...' : 'Message task assistant...'}
                 className="min-w-0 resize-none rounded border border-zinc-300 px-3 py-2 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:bg-zinc-100"
               />
               <button
                 type="submit"
-                disabled={sending || Boolean(pendingDraft) || input.trim().length === 0}
+                disabled={sending || input.trim().length === 0}
                 className="inline-flex items-center justify-center gap-2 rounded bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />

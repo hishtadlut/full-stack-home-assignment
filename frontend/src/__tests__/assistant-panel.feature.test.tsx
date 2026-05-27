@@ -39,15 +39,35 @@ const draft: AssistantDraftShape = {
   ],
 };
 
+const revisedDraft: AssistantDraftShape = {
+  schemaVersion: 1,
+  summary: 'Create the requested task with low priority',
+  operations: [
+    {
+      id: 'create_task',
+      type: 'create_task',
+      label: 'Create task',
+      input: {
+        title: 'Write tests',
+        description: 'Cover assistant drafts',
+        status: 'TODO',
+        priority: 'LOW',
+      },
+    },
+  ],
+};
+
 let actor: ReturnType<typeof userEvent.setup>;
 let currentChats: AssistantChatListItem[];
 let currentChat: AssistantChat;
+let messagePostCount: number;
 
 describe('Feature: assistant panel draft workflow', () => {
   beforeEach(() => {
     actor = userEvent.setup();
     currentChats = [];
     currentChat = emptyChat;
+    messagePostCount = 0;
     localStorage.setItem('token', 'auth-token');
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
@@ -90,6 +110,36 @@ describe('Feature: assistant panel draft workflow', () => {
     expect(screen.getByRole('link', { name: /done\. i applied the approved changes\. open created task/i }))
       .toHaveAttribute('href', '/tasks/task-1');
   });
+
+  it('allows asking for a draft revision while a draft is still pending', async () => {
+    render(
+      <MemoryRouter>
+        <AssistantPanel onTasksChanged={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await actor.click(screen.getByRole('button', { name: /open task assistant/i }));
+    await screen.findByText(/what can i do/i);
+
+    await actor.type(
+      screen.getByPlaceholderText(/ask me to find, create, update, or delete tasks/i),
+      'Create a task for assistant tests',
+    );
+    await actor.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText(/you can approve this draft/i);
+
+    const input = screen.getByLabelText(/message task assistant/i);
+    expect(input).toBeEnabled();
+
+    await actor.type(input, 'change priority to low');
+    await actor.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByText(/i revised the draft priority/i);
+    expect(screen.getByText(/draft superseded/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft pending/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('LOW')).toBeInTheDocument();
+  });
 });
 
 const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -111,6 +161,56 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
 
   if (method === 'POST' && url.endsWith('/api/assistant/chats/chat-1/messages')) {
+    messagePostCount += 1;
+
+    if (messagePostCount > 1) {
+      currentChat = {
+        ...chatListItem,
+        messageCount: 4,
+        messages: [
+          ...currentChat.messages.map((message) =>
+            message.draft
+              ? {
+                  ...message,
+                  draft: {
+                    ...message.draft,
+                    status: 'SUPERSEDED' as const,
+                    decidedAt: new Date().toISOString(),
+                  },
+                }
+              : message,
+          ),
+          {
+            id: 'message-3',
+            sequence: 3,
+            role: 'USER',
+            content: 'change priority to low',
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'message-4',
+            sequence: 4,
+            role: 'ASSISTANT',
+            content: 'I revised the draft priority to low.',
+            createdAt: new Date().toISOString(),
+            draft: {
+              id: 'draft-2',
+              status: 'PENDING',
+              originalDraft: revisedDraft,
+              approvedDraft: null,
+              executionResult: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              decidedAt: null,
+              executedAt: null,
+            },
+          },
+        ],
+      };
+
+      return jsonResponse({ chat: currentChat }, { status: 201 });
+    }
+
     currentChat = {
       ...chatListItem,
       messageCount: 2,

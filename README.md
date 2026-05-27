@@ -13,6 +13,7 @@ This is a Task Management application that allows users to:
 - Add comments to tasks
 - Assign tasks to team members
 - Tag tasks for better organization
+- Use a Gemini-powered assistant to query tasks and draft task/comment changes before applying them
 
 ## Tech Stack
 
@@ -34,6 +35,7 @@ This is a Task Management application that allows users to:
 - PostgreSQL (via Docker)
 - JWT Authentication
 - bcrypt
+- Google GenAI SDK for the assistant
 
 ## Prerequisites
 
@@ -67,10 +69,12 @@ cp .env.example .env
 # Update .env with your configuration. JWT_SECRET is required in production.
 # DATABASE_URL="postgresql://taskmanager:taskmanager123@localhost:5432/taskmanager?schema=public"
 # JWT_SECRET="<generate-a-long-random-secret>"
+# GEMINI_API_KEY="<your-gemini-api-key>"
 # NODE_ENV=development
 # PORT=3000
 
 # Set NODE_ENV=production in deployed environments so unsafe JWT secrets fail startup.
+# GEMINI_API_KEY is required for assistant chat and live assistant tests.
 
 # Start PostgreSQL database with Docker and setup database (migrate + seed)
 npm run db:setup
@@ -173,6 +177,23 @@ full-stack-home-assignment/
 - `POST /api/assistant/chats/:chatId/messages` - Send a user message
 - `PATCH /api/assistant/drafts/:draftId` - Execute or discard a pending draft
 
+## Assistant Feature
+
+The assistant is available as a floating bottom-left chat in the dashboard and as a full assistant workspace. It uses `gemini-3.5-flash` with medium thinking effort through the backend, so the API key is never exposed to the browser.
+
+Assistant behavior:
+
+- Reads are answered directly from backend task/comment context without creating drafts.
+- Writes are never applied directly by the model.
+- Create/update/delete task and comment requests produce a structured draft first.
+- Drafts are rendered as editable forms in the UI.
+- Users can approve, edit, discard, or ask the assistant to revise a pending draft.
+- Delete drafts show a destructive warning and approval action.
+- Old chats, messages, and draft history are persisted per user.
+- Pending draft revisions supersede the previous pending draft while preserving the prior draft in chat history.
+
+Assistant persistence uses Prisma models for chats, messages, and drafts. Run database migrations after pulling these changes so the assistant tables exist.
+
 ## UI Routes
 
 - `/dashboard` - Metrics, URL-backed search/status/priority filters, board view, and table view
@@ -193,7 +214,19 @@ After seeding, you can login with:
 
 - Development: `npm run dev` (uses tsx for hot reload)
 - Build: `npm run build`
+- Typecheck: `npm run typecheck`
+- Mock assistant tests: `npm test`
+- Live Gemini assistant test: `npm run test:assistant:live`
 - Start: `npm start`
+
+The live assistant test requires:
+
+- PostgreSQL running and migrated
+- Seed data available, including `john@example.com` / `password123`
+- Backend server running on `http://localhost:3000`, or set `ASSISTANT_TEST_BASE_URL`
+- `GEMINI_API_KEY` in `backend/.env`
+
+The live test exercises short chat, long chat, pending draft revision, and discarded-draft description recreation. It discards generated drafts and should not create tasks.
 
 ### Frontend
 

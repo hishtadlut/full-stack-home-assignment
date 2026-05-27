@@ -8,6 +8,7 @@ export const ASSISTANT_MESSAGE_ROLE = {
 
 export const ASSISTANT_DRAFT_STATUS = {
   Pending: 'PENDING',
+  Superseded: 'SUPERSEDED',
   Executed: 'EXECUTED',
   Discarded: 'DISCARDED',
   Failed: 'FAILED',
