@@ -9,6 +9,7 @@ import {
   taskListInclude,
 } from '../db/taskQueries';
 import { idSelect } from '../db/selects';
+import { publishTaskChanged } from '../realtime/taskEvents';
 
 export const getTasks = async (req: AuthRequest, res: Response) => {
   try {
@@ -125,6 +126,7 @@ export const updateTask = async (req: AuthRequest, res: Response) => {
       include: taskListInclude,
     });
 
+    publishTaskChanged({ taskId: task.id, action: 'updated', actorUserId: userId });
     res.json(task);
   } catch (error) {
     if (isRecordNotFoundError(error)) {
@@ -191,6 +193,7 @@ export const updateTaskAssignments = async (req: AuthRequest, res: Response) => 
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    publishTaskChanged({ taskId: updatedTask.id, action: 'assignments_updated', actorUserId: userId });
     res.json(updatedTask);
   } catch (error) {
     console.error('Error updating task assignments:', error);
@@ -221,6 +224,7 @@ export const deleteTask = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    publishTaskChanged({ taskId: id, action: 'deleted', actorUserId: userId });
     res.status(204).send();
   } catch (error) {
     if (isRecordNotFoundError(error)) {

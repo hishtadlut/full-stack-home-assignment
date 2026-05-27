@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    publishTaskChanged: vi.fn(),
     prisma: {
       $transaction: vi.fn(),
     },
@@ -43,6 +44,10 @@ vi.mock('../db/prisma', () => ({
     typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025',
   isForeignKeyConstraintError: (error: unknown) =>
     typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2003',
+}));
+
+vi.mock('../realtime/taskEvents', () => ({
+  publishTaskChanged: mocks.publishTaskChanged,
 }));
 
 const userId = 'user-1';
@@ -183,6 +188,17 @@ describe('executeApprovedDraft', () => {
     });
     expect(mocks.tx.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
     expect(mocks.tx.taskTag.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
+    expect(mocks.publishTaskChanged).toHaveBeenCalledTimes(6);
+    for (const event of [
+      { taskId: 'updated-task', action: 'updated' },
+      { taskId: 'task-3', action: 'deleted' },
+      { taskId: 'task-6', action: 'assignments_updated' },
+      { taskId: 'task-7', action: 'assignments_updated' },
+      { taskId: 'task-4', action: 'comment_created' },
+      { taskId: 'task-5', action: 'comment_deleted' },
+    ]) {
+      expect(mocks.publishTaskChanged).toHaveBeenCalledWith({ ...event, actorUserId: userId });
+    }
   });
 
   it('defaults optional create task fields before persistence', async () => {

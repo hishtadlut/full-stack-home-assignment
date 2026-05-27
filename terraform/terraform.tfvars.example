@@ -1,0 +1,20 @@
+project_id        = "task-managment-497618"
+domain_name       = "task-management.hishtadlut.link"
+github_repository = "hishtadlut/full-stack-home-assignment"
+
+# Israel / Tel Aviv
+region = "me-west1"
+
+# Replace after images are pushed to Artifact Registry.
+backend_image  = "me-west1-docker.pkg.dev/task-managment-497618/task-manager/backend:<git-sha>"
+frontend_image = "me-west1-docker.pkg.dev/task-managment-497618/task-manager/frontend:<git-sha>"
+
+# Optional. If omitted, the assistant endpoint deploys but provider calls fail until a secret version is added.
+# gemini_api_key = "..."
+
+# Optional extra browser origins allowed to call the API directly.
+# The production domain is included automatically.
+# additional_cors_origins = ["https://admin.example.com"]
+
+# Optional alert target.
+# alert_email = "you@example.com"

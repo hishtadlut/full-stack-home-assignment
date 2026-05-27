@@ -5,6 +5,7 @@ import {
   type TransactionClient,
 } from '../db/prisma';
 import { findCommentForTaskOwner, findTaskIdForUser } from '../db/taskQueries';
+import { publishTaskChanged, type TaskChangedAction } from '../realtime/taskEvents';
 import type { AssistantDraftOperation, AssistantDraftShape, AssistantExecutionResult } from './types';
 
 export class DraftExecutionError extends Error {
@@ -29,6 +30,8 @@ export const executeApprovedDraft = async (
 
       return results;
     });
+
+    publishExecutedTaskEvents(userId, operations);
 
     return {
       ok: true,
@@ -290,3 +293,27 @@ const errorMessageFor = (error: unknown) => {
 
   return 'Draft execution failed';
 };
+
+const publishExecutedTaskEvents = (
+  userId: string,
+  operations: AssistantExecutionResult['operations'],
+) => {
+  for (const operation of operations) {
+    if (!operation.ok || !operation.taskId) continue;
+
+    const action = taskActionByOperation[operation.type];
+    if (!action) continue;
+
+    publishTaskChanged({ taskId: operation.taskId, action, actorUserId: userId });
+  }
+};
+
+const taskActionByOperation = {
+  update_task: 'updated',
+  delete_task: 'deleted',
+  assign_task: 'assignments_updated',
+  unassign_task: 'assignments_updated',
+  create_comment: 'comment_created',
+  delete_comment: 'comment_deleted',
+  create_task: null,
+} satisfies Record<AssistantDraftOperation['type'], TaskChangedAction | null>;

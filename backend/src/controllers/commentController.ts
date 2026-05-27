@@ -7,6 +7,7 @@ import {
   taskAssignedToUser,
   taskVisibleToUser,
 } from '../db/taskQueries';
+import { publishTaskChanged } from '../realtime/taskEvents';
 
 export const createComment = async (req: AuthRequest, res: Response) => {
   try {
@@ -30,6 +31,7 @@ export const createComment = async (req: AuthRequest, res: Response) => {
       include: commentWithUserInclude,
     });
 
+    publishTaskChanged({ taskId, action: 'comment_created', actorUserId: userId });
     res.status(201).json(comment);
   } catch (error) {
     console.error('Error creating comment:', error);
@@ -80,6 +82,7 @@ export const deleteComment = async (req: AuthRequest, res: Response) => {
       where: { id },
     });
 
+    publishTaskChanged({ taskId: comment.taskId, action: 'comment_deleted', actorUserId: userId });
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting comment:', error);
