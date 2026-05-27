@@ -2,7 +2,12 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { isString } from '../middleware/validation';
 import { isRecordNotFoundError, prisma } from '../db/prisma';
-import { findTaskIdForUser, taskDetailInclude, taskListInclude } from '../db/taskQueries';
+import {
+  findTaskIdForUser,
+  findTaskIdsByFullTextSearch,
+  taskDetailInclude,
+  taskListInclude,
+} from '../db/taskQueries';
 import { idSelect } from '../db/selects';
 
 export const getTasks = async (req: AuthRequest, res: Response) => {
@@ -12,25 +17,50 @@ export const getTasks = async (req: AuthRequest, res: Response) => {
     const status = isString(req.query.status) ? req.query.status : undefined;
     const priority = isString(req.query.priority) ? req.query.priority : undefined;
 
-    const tasks = await prisma.task.findMany({
-      where: {
-        AND: [
-          {
-            assignments: {
-              some: {
-                userId,
-              },
+    if (search) {
+      const taskIds = await findTaskIdsByFullTextSearch(prisma, {
+        userId,
+        search,
+        status,
+        priority,
+      });
+
+      if (taskIds.length === 0) {
+        return res.json([]);
+      }
+
+      const tasks = await prisma.task.findMany({
+        where: {
+          id: {
+            in: taskIds,
+          },
+          assignments: {
+            some: {
+              userId,
             },
           },
-          ...(search
-            ? [{
-                OR: [
-                  { title: { contains: search, mode: 'insensitive' as const } },
-                  { description: { contains: search, mode: 'insensitive' as const } },
-                ],
-              }]
-            : []),
-        ],
+          ...(status && { status }),
+          ...(priority && { priority }),
+        },
+        include: taskListInclude,
+      });
+
+      const tasksById = new Map(tasks.map((task) => [task.id, task]));
+      const orderedTasks = taskIds.flatMap((taskId) => {
+        const task = tasksById.get(taskId);
+        return task ? [task] : [];
+      });
+
+      return res.json(orderedTasks);
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        assignments: {
+          some: {
+            userId,
+          },
+        },
         ...(status && { status }),
         ...(priority && { priority }),
       },
