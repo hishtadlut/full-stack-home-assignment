@@ -291,9 +291,9 @@ The `main` branch is protected in GitHub and requires both jobs to pass before c
 
 ## Production Deployment
 
-The production GCP Terraform deployment is documented in [docs/infrastructure/README.md](./docs/infrastructure/README.md).
+Production deploys are automatic after `main` passes CI.
 
-That document covers Terraform state, required variables, plan/apply commands, managed resources, and the one external DNS step.
+The production GCP setup and deploy flow are documented in [docs/infrastructure/README.md](./docs/infrastructure/README.md). Terraform owns the GCP infrastructure. GitHub Actions builds the images, runs the Cloud Run Prisma migration job, and rolls the API and web services.
 
 ## Database
 
