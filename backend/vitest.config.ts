@@ -17,6 +17,7 @@ export default defineConfig({
         'src/controllers/**/*.ts',
         'src/middleware/**/*.ts',
         'src/utils/**/*.ts',
+        'src/realtime/**/*.ts',
         'src/assistant/draftValidator.ts',
         'src/assistant/executor.ts',
         'src/assistant/repository.ts',
