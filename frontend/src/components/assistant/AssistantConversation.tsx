@@ -11,6 +11,7 @@ interface AssistantConversationProps {
   loadingClassName?: string;
   sendingClassName?: string;
   onExecuted: (chat: AssistantChat) => Promise<void>;
+  onFailed: (chat: AssistantChat) => Promise<void>;
   onDiscarded: (chat: AssistantChat) => Promise<void>;
 }
 
@@ -22,6 +23,7 @@ export const AssistantConversation = ({
   loadingClassName = 'text-sm text-gray-600',
   sendingClassName = 'mt-3 max-w-[80%] rounded-lg bg-white px-4 py-3 text-sm text-gray-600 shadow-sm',
   onExecuted,
+  onFailed,
   onDiscarded,
 }: AssistantConversationProps) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -51,6 +53,7 @@ export const AssistantConversation = ({
           key={message.id}
           message={message}
           onExecuted={onExecuted}
+          onFailed={onFailed}
           onDiscarded={onDiscarded}
         />
       ))}

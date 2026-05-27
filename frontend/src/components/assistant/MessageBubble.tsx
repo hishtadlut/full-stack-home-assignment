@@ -6,10 +6,11 @@ import { taskLinksForAssistantMessage } from './messageTaskLinks';
 interface MessageBubbleProps {
   message: AssistantMessage;
   onExecuted: (chat: AssistantChat) => Promise<void>;
+  onFailed: (chat: AssistantChat) => Promise<void>;
   onDiscarded: (chat: AssistantChat) => Promise<void>;
 }
 
-export const MessageBubble = ({ message, onExecuted, onDiscarded }: MessageBubbleProps) => {
+export const MessageBubble = ({ message, onExecuted, onFailed, onDiscarded }: MessageBubbleProps) => {
   const isUser = message.role === 'USER';
   const taskLinks = taskLinksForAssistantMessage(message);
   const bubbleClassName = `rounded-lg px-4 py-3 text-sm shadow-sm ${
@@ -52,7 +53,12 @@ export const MessageBubble = ({ message, onExecuted, onDiscarded }: MessageBubbl
           </div>
         )}
         {message.draft && (
-          <DraftCard draftRecord={message.draft} onExecuted={onExecuted} onDiscarded={onDiscarded} />
+          <DraftCard
+            draftRecord={message.draft}
+            onExecuted={onExecuted}
+            onFailed={onFailed}
+            onDiscarded={onDiscarded}
+          />
         )}
       </div>
     </article>

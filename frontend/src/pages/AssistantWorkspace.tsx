@@ -20,6 +20,7 @@ export const AssistantWorkspace = () => {
     startFreshChat,
     sendMessage,
     handleDraftExecuted,
+    handleDraftFailed,
     handleDraftDiscarded,
   } = useAssistantChat({ onTasksChanged: async () => undefined });
 
@@ -89,6 +90,7 @@ export const AssistantWorkspace = () => {
             loadingClassName="text-sm text-zinc-600"
             sendingClassName="mt-3 max-w-[80%] rounded-lg bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm"
             onExecuted={handleDraftExecuted}
+            onFailed={handleDraftFailed}
             onDiscarded={handleDraftDiscarded}
           />
 

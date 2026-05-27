@@ -11,10 +11,11 @@ import { DraftOperationForm } from './DraftOperationForm';
 interface DraftCardProps {
   draftRecord: AssistantDraftRecord;
   onExecuted: (chat: AssistantChat) => Promise<void>;
+  onFailed: (chat: AssistantChat) => Promise<void>;
   onDiscarded: (chat: AssistantChat) => Promise<void>;
 }
 
-export const DraftCard = ({ draftRecord, onExecuted, onDiscarded }: DraftCardProps) => {
+export const DraftCard = ({ draftRecord, onExecuted, onFailed, onDiscarded }: DraftCardProps) => {
   const [draft, setDraft] = useState<AssistantDraftShape>(
     draftRecord.approvedDraft ?? draftRecord.originalDraft,
   );
@@ -47,7 +48,14 @@ export const DraftCard = ({ draftRecord, onExecuted, onDiscarded }: DraftCardPro
 
     try {
       const response = await assistantApi.executeDraft(draftRecord.id, draft);
-      await onExecuted(response.chat);
+
+      if (response.executionResult.ok) {
+        await onExecuted(response.chat);
+        return;
+      }
+
+      setError(response.error ?? 'Draft execution failed');
+      await onFailed(response.chat);
     } catch (executeError) {
       setError(messageForError(executeError));
     } finally {

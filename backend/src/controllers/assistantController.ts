@@ -7,8 +7,7 @@ import {
 import { executeApprovedDraft, DraftExecutionError } from '../assistant/executor';
 import { generateAssistantResponse } from '../assistant/geminiAssistant';
 import {
-  appendAssistantModelResponse,
-  appendUserMessage,
+  appendAssistantConversationTurn,
   createAssistantChat,
   findAssistantDraftForUser,
   getAssistantChatForUser,
@@ -107,9 +106,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       throw error;
     }
 
-    await appendUserMessage(chatId, message);
-    await maybeTitleChatFromMessage(chatId, message);
-
     const [recentMessages, pendingDraft, taskContext] = await Promise.all([
       getRecentConversationForModel(chatId),
       getPendingDraftForChat(chatId),
@@ -118,7 +114,8 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
     const modelResponse = await callAssistantModel(message, recentMessages, pendingDraft, taskContext);
 
-    await appendAssistantModelResponse(chatId, modelResponse.message, modelResponse.draft);
+    await appendAssistantConversationTurn(chatId, message, modelResponse.message, modelResponse.draft);
+    await maybeTitleChatFromMessage(chatId, message);
 
     const snapshot = await getAssistantChatSnapshot(userId, chatId);
     res.status(201).json({ chat: snapshot });

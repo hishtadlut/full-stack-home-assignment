@@ -61,6 +61,7 @@ let actor: ReturnType<typeof userEvent.setup>;
 let currentChats: AssistantChatListItem[];
 let currentChat: AssistantChat;
 let messagePostCount: number;
+let executeDraftShouldFail: boolean;
 
 describe('Feature: assistant panel draft workflow', () => {
   beforeEach(() => {
@@ -68,6 +69,7 @@ describe('Feature: assistant panel draft workflow', () => {
     currentChats = [];
     currentChat = emptyChat;
     messagePostCount = 0;
+    executeDraftShouldFail = false;
     localStorage.setItem('token', 'auth-token');
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
@@ -109,6 +111,34 @@ describe('Feature: assistant panel draft workflow', () => {
     expect(screen.getByText(/done\. i applied the approved changes/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /done\. i applied the approved changes\. open created task/i }))
       .toHaveAttribute('href', '/tasks/task-1');
+  });
+
+  it('renders failed draft execution state from the backend 409 response', async () => {
+    executeDraftShouldFail = true;
+    const onTasksChanged = vi.fn();
+    render(
+      <MemoryRouter>
+        <AssistantPanel onTasksChanged={onTasksChanged} />
+      </MemoryRouter>,
+    );
+
+    await actor.click(screen.getByRole('button', { name: /open task assistant/i }));
+    await screen.findByText(/what can i do/i);
+
+    await actor.type(
+      screen.getByPlaceholderText(/ask me to find, create, update, or delete tasks/i),
+      'Create a task for assistant tests',
+    );
+    await actor.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await screen.findByDisplayValue('Write tests');
+    await actor.click(screen.getByRole('button', { name: /apply draft/i }));
+
+    expect(await screen.findByText(/i could not apply the draft: task not found/i)).toBeInTheDocument();
+    expect(screen.getByText(/execution failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft failed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply draft/i })).not.toBeInTheDocument();
+    expect(onTasksChanged).not.toHaveBeenCalled();
   });
 
   it('allows asking for a draft revision while a draft is still pending', async () => {
@@ -249,16 +279,22 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (method === 'PATCH' && url.endsWith('/api/assistant/drafts/draft-1')) {
     const body = JSON.parse(String(init?.body));
     expect(body.status).toBe('EXECUTED');
-    expect(body.approvedDraft.operations[0].input.title).toBe('Write integration tests');
+    expect(body.approvedDraft.operations[0].input.title).toBe(
+      executeDraftShouldFail ? 'Write tests' : 'Write integration tests',
+    );
     const executionResult = {
-      ok: true,
+      ok: !executeDraftShouldFail,
       operations: [
         {
           operationId: 'create_task',
           type: 'create_task' as const,
-          ok: true,
-          entityId: 'task-1',
-          taskId: 'task-1',
+          ok: !executeDraftShouldFail,
+          ...(executeDraftShouldFail
+            ? { error: 'Task not found' }
+            : {
+                entityId: 'task-1',
+                taskId: 'task-1',
+              }),
         },
       ],
     };
@@ -272,11 +308,11 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
                 ...message,
                 draft: {
                   ...message.draft,
-                  status: 'EXECUTED' as const,
+                  status: executeDraftShouldFail ? 'FAILED' as const : 'EXECUTED' as const,
                   approvedDraft: body.approvedDraft,
                   executionResult,
                   decidedAt: new Date().toISOString(),
-                  executedAt: new Date().toISOString(),
+                  executedAt: executeDraftShouldFail ? null : new Date().toISOString(),
                 },
               }
             : message,
@@ -285,10 +321,12 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
           id: 'message-3',
           sequence: 3,
           role: 'ASSISTANT',
-          content: 'Done. I applied the approved changes.',
+          content: executeDraftShouldFail
+            ? 'I could not apply the draft: Task not found'
+            : 'Done. I applied the approved changes.',
           metadata: {
             draftId: 'draft-1',
-            action: 'executed',
+            action: executeDraftShouldFail ? 'failed' : 'executed',
             executionResult,
           },
           createdAt: new Date().toISOString(),
@@ -299,7 +337,8 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({
       chat: currentChat,
       executionResult,
-    });
+      ...(executeDraftShouldFail && { error: 'Task not found' }),
+    }, executeDraftShouldFail ? { status: 409 } : undefined);
   }
 
   throw new Error(`Unexpected request: ${method} ${url}`);
