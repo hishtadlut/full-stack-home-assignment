@@ -215,7 +215,9 @@ After seeding, you can login with:
 - Development: `npm run dev` (uses tsx for hot reload)
 - Build: `npm run build`
 - Typecheck: `npm run typecheck`
-- Mock assistant tests: `npm test`
+- Test with coverage: `npm test`
+- Request body middleware smoke test: `npm run test:request-body`
+- Mock assistant tests: `npm run test:assistant:mock`
 - Live Gemini assistant test: `npm run test:assistant:live`
 - Start: `npm start`
 
@@ -239,6 +241,48 @@ The live test exercises short chat, long chat, pending draft revision, and disca
 - Visual check: `npm run visual:check`
 
 The visual workflow starts a Vite server, mocks the API in the browser, and captures dashboard, task detail, and assistant screens under `output/playwright/`. Run `npx playwright install chromium` once if Chromium is not installed.
+
+## Testing
+
+### Backend
+
+Backend tests use Vitest and Supertest. The suite covers route happy paths and error paths for authentication, tasks, comments, assistant routes, draft validation, and draft execution.
+
+```bash
+cd backend
+npm install
+npm run db:generate
+npm run typecheck
+npm test
+```
+
+`npm test` runs coverage and enforces these minimum thresholds:
+
+- Statements: 90%
+- Branches: 80%
+- Functions: 90%
+- Lines: 90%
+
+### Frontend
+
+Frontend tests use Vitest with React Testing Library.
+
+```bash
+cd frontend
+npm install
+npm test
+```
+
+## Continuous Integration
+
+GitHub Actions runs `.github/workflows/tests.yml` on every push and pull request.
+
+The workflow has two required jobs:
+
+- `Backend tests`: installs backend dependencies, generates the Prisma client, typechecks, and runs backend tests with coverage.
+- `Frontend tests`: installs frontend dependencies and runs the frontend test suite.
+
+The `main` branch is protected in GitHub and requires both jobs to pass before changes can be merged.
 
 ## Database
 

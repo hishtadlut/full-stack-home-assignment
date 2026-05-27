@@ -1,0 +1,288 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DraftExecutionError, executeApprovedDraft } from './executor';
+import type { AssistantDraftShape } from './types';
+
+const mocks = vi.hoisted(() => {
+  const tx = {
+    task: {
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    comment: {
+      create: vi.fn(),
+      deleteMany: vi.fn(),
+      findFirst: vi.fn(),
+      delete: vi.fn(),
+    },
+    taskAssignment: {
+      deleteMany: vi.fn(),
+    },
+    taskTag: {
+      deleteMany: vi.fn(),
+    },
+  };
+
+  return {
+    prisma: {
+      $transaction: vi.fn(),
+    },
+    tx,
+  };
+});
+
+vi.mock('../db/prisma', () => ({
+  prisma: mocks.prisma,
+  isRecordNotFoundError: (error: unknown) =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025',
+  isForeignKeyConstraintError: (error: unknown) =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2003',
+}));
+
+const userId = 'user-1';
+
+const fullDraft: AssistantDraftShape = {
+  schemaVersion: 1,
+  summary: 'Apply a full draft',
+  operations: [
+    {
+      id: 'create-task',
+      type: 'create_task',
+      label: 'Create task',
+      input: {
+        title: 'Created task',
+        description: null,
+        status: 'TODO',
+        priority: 'HIGH',
+      },
+    },
+    {
+      id: 'update-task',
+      type: 'update_task',
+      label: 'Update task',
+      taskId: 'task-2',
+      patch: {
+        title: 'Updated task',
+        description: 'Updated description',
+        status: 'IN_PROGRESS',
+        priority: 'MEDIUM',
+      },
+    },
+    {
+      id: 'delete-task',
+      type: 'delete_task',
+      label: 'Delete task',
+      taskId: 'task-3',
+    },
+    {
+      id: 'create-comment',
+      type: 'create_comment',
+      label: 'Create comment',
+      taskId: 'task-4',
+      input: {
+        content: 'New comment',
+      },
+    },
+    {
+      id: 'delete-comment',
+      type: 'delete_comment',
+      label: 'Delete comment',
+      commentId: 'comment-5',
+    },
+  ],
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.prisma.$transaction.mockImplementation(async (callback: (tx: typeof mocks.tx) => unknown) => callback(mocks.tx));
+});
+
+const prismaError = (code: string) =>
+  Object.assign(new Error('Prisma request failed'), { code });
+
+describe('executeApprovedDraft', () => {
+  it('executes every supported operation type in one transaction', async () => {
+    mocks.tx.task.create.mockResolvedValue({ id: 'created-task' });
+    mocks.tx.task.update.mockResolvedValue({ id: 'updated-task' });
+    mocks.tx.task.delete.mockResolvedValue({ id: 'deleted-task' });
+    mocks.tx.task.findFirst
+      .mockResolvedValueOnce({ id: 'task-3' })
+      .mockResolvedValueOnce({ id: 'task-4' });
+    mocks.tx.comment.create.mockResolvedValue({ id: 'created-comment' });
+    mocks.tx.comment.findFirst.mockResolvedValue({ id: 'comment-5', taskId: 'task-5' });
+    mocks.tx.comment.delete.mockResolvedValue({ id: 'comment-5' });
+
+    const result = await executeApprovedDraft(userId, fullDraft);
+
+    expect(result).toEqual({
+      ok: true,
+      operations: [
+        { operationId: 'create-task', type: 'create_task', ok: true, entityId: 'created-task', taskId: 'created-task' },
+        { operationId: 'update-task', type: 'update_task', ok: true, entityId: 'updated-task', taskId: 'updated-task' },
+        { operationId: 'delete-task', type: 'delete_task', ok: true, entityId: 'task-3', taskId: 'task-3' },
+        { operationId: 'create-comment', type: 'create_comment', ok: true, entityId: 'created-comment', taskId: 'task-4' },
+        { operationId: 'delete-comment', type: 'delete_comment', ok: true, entityId: 'comment-5', taskId: 'task-5' },
+      ],
+    });
+    expect(mocks.tx.task.create).toHaveBeenCalledWith({
+      data: {
+        title: 'Created task',
+        description: null,
+        status: 'TODO',
+        priority: 'HIGH',
+        userId,
+      },
+    });
+    expect(mocks.tx.comment.delete).toHaveBeenCalledWith({
+      where: {
+        id: 'comment-5',
+      },
+    });
+    expect(mocks.tx.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
+    expect(mocks.tx.taskTag.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
+  });
+
+  it('defaults optional create task fields before persistence', async () => {
+    mocks.tx.task.create.mockResolvedValue({ id: 'created-task' });
+
+    const result = await executeApprovedDraft(userId, {
+      schemaVersion: 1,
+      summary: 'Create a task',
+      operations: [
+        {
+          id: 'create-task',
+          type: 'create_task',
+          label: 'Create task',
+          input: {
+            title: 'Created task',
+          },
+        },
+      ],
+    });
+
+    expect(result.operations[0]).toMatchObject({ entityId: 'created-task' });
+    expect(mocks.tx.task.create).toHaveBeenCalledWith({
+      data: {
+        title: 'Created task',
+        description: undefined,
+        status: 'TODO',
+        priority: 'MEDIUM',
+        userId,
+      },
+    });
+  });
+
+  it('rejects create_comment when the task is not owned by the user', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue(null);
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Create a comment',
+        operations: [
+          {
+            id: 'create-comment',
+            type: 'create_comment',
+            label: 'Create comment',
+            taskId: 'task-1',
+            input: {
+              content: 'Comment',
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('Task not found'));
+  });
+
+  it('rejects delete_comment when the comment is not owned by the user', async () => {
+    mocks.tx.comment.findFirst.mockResolvedValue(null);
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Delete a comment',
+        operations: [
+          {
+            id: 'delete-comment',
+            type: 'delete_comment',
+            label: 'Delete comment',
+            commentId: 'comment-1',
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('Comment not found'));
+  });
+
+  it('maps Prisma not-found errors to a user-facing execution error', async () => {
+    mocks.tx.task.update.mockRejectedValue(prismaError('P2025'));
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Update a task',
+        operations: [
+          {
+            id: 'update-task',
+            type: 'update_task',
+            label: 'Update task',
+            taskId: 'task-1',
+            patch: {
+              title: 'Updated',
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('Task or comment not found'));
+  });
+
+  it('maps Prisma relation errors to a user-facing execution error', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue({ id: 'task-1' });
+    mocks.tx.task.delete.mockRejectedValue(prismaError('P2003'));
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Delete a task',
+        operations: [
+          {
+            id: 'delete-task',
+            type: 'delete_task',
+            label: 'Delete task',
+            taskId: 'task-1',
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      new DraftExecutionError('Delete failed because related comments, assignments, or tags still exist'),
+    );
+  });
+
+  it('preserves unexpected Error messages', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue({ id: 'task-1' });
+    mocks.tx.task.delete.mockRejectedValue(new Error('database down'));
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Delete a task',
+        operations: [
+          {
+            id: 'delete-task',
+            type: 'delete_task',
+            label: 'Delete task',
+            taskId: 'task-1',
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('database down'));
+  });
+
+  it('falls back when a non-Error value is thrown', async () => {
+    mocks.prisma.$transaction.mockRejectedValue('no details');
+
+    await expect(executeApprovedDraft(userId, fullDraft)).rejects.toThrow(
+      new DraftExecutionError('Draft execution failed'),
+    );
+  });
+});
