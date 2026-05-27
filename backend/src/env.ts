@@ -10,6 +10,27 @@ const placeholderJwtSecrets = new Set([
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
 
+const parseCorsOrigins = (): string[] => {
+  return (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map(normalizeOrigin)
+    .filter((origin): origin is string => Boolean(origin));
+};
+
+const normalizeOrigin = (value: string): string | null => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+};
+
 const createDevelopmentJwtSecret = (): string => {
   return randomBytes(32).toString('hex');
 };
@@ -39,6 +60,7 @@ const getJwtSecret = (): string => {
 };
 
 export const env = {
+  corsOrigins: parseCorsOrigins(),
   isProduction,
   jwtSecret: getJwtSecret(),
   nodeEnv,

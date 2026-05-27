@@ -1,14 +1,14 @@
 import express from 'express';
-import cors from 'cors';
 import authRoutes from './routes/auth';
 import taskRoutes from './routes/tasks';
 import commentRoutes from './routes/comments';
 import assistantRoutes from './routes/assistant';
+import { corsMiddleware } from './middleware/cors';
 import { jsonBodyErrorHandler, jsonBodyParser } from './middleware/requestBody';
 
 export const app = express();
 
-app.use(cors());
+app.use(corsMiddleware);
 app.use(jsonBodyParser);
 app.use(jsonBodyErrorHandler);
 
