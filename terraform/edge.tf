@@ -112,6 +112,8 @@ resource "google_compute_url_map" "https" {
         "/api",
         "/api/*",
         "/health",
+        "/ws",
+        "/ws/*",
       ]
       service = google_compute_backend_service.api.id
     }

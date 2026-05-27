@@ -79,9 +79,9 @@ variable "api_min_instances" {
 }
 
 variable "api_max_instances" {
-  description = "Small burst cap for the API service."
+  description = "Maximum API instances. Keep at 1 while realtime WebSocket subscriptions are stored in process memory."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "web_min_instances" {
@@ -109,9 +109,9 @@ variable "web_concurrency" {
 }
 
 variable "api_timeout" {
-  description = "API request timeout."
+  description = "API request timeout. WebSocket connections are long-running HTTP requests on Cloud Run."
   type        = string
-  default     = "30s"
+  default     = "3600s"
 }
 
 variable "web_timeout" {
