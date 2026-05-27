@@ -69,13 +69,27 @@ export const hasPendingDraft = async (chatId: string) => {
   const draft = await prisma.assistantDraft.findFirst({
     where: {
       chatId,
-      status: 'PENDING',
+      status: ASSISTANT_DRAFT_STATUS.Pending,
     },
     select: idSelect,
   });
 
   return Boolean(draft);
 };
+
+export const getPendingDraftForChat = async (chatId: string) =>
+  prisma.assistantDraft.findFirst({
+    where: {
+      chatId,
+      status: ASSISTANT_DRAFT_STATUS.Pending,
+    },
+    select: {
+      id: true,
+      originalDraft: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
 export const findAssistantDraftForUser = (userId: string, draftId: string) =>
   prisma.assistantDraft.findFirst({
@@ -141,6 +155,17 @@ export const appendAssistantModelResponse = async (
     );
 
     if (draft) {
+      await tx.assistantDraft.updateMany({
+        where: {
+          chatId,
+          status: ASSISTANT_DRAFT_STATUS.Pending,
+        },
+        data: {
+          status: ASSISTANT_DRAFT_STATUS.Superseded,
+          decidedAt: new Date(),
+        },
+      });
+
       await tx.assistantDraft.create({
         data: {
           chatId,

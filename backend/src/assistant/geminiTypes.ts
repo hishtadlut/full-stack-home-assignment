@@ -4,7 +4,9 @@ export interface GenerateAssistantResponseInput {
     role: string;
     content: string;
     createdAt: Date;
+    draft?: unknown;
   }>;
+  pendingDraft: unknown;
   taskContext: unknown;
 }
 
@@ -22,5 +24,6 @@ export interface GenAiModule {
   GoogleGenAI: new (config: { apiKey: string }) => GoogleGenAIClient;
   ThinkingLevel: {
     MINIMAL: string;
+    MEDIUM: string;
   };
 }

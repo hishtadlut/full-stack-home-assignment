@@ -17,6 +17,7 @@ interface ChatResponse {
       draft?: {
         id: string;
         status: string;
+        originalDraft?: unknown;
       } | null;
     }>;
   };
@@ -68,10 +69,29 @@ const main = async () => {
   assert.equal(draftMessage?.role, 'ASSISTANT');
   assert.equal(draftMessage?.draft?.status, 'PENDING');
   assert.ok(draftMessage?.draft?.id);
+  assert.ok(nonEmptyCreateTaskDescription(draftMessage.draft.originalDraft));
   const draftId = draftMessage.draft.id;
   console.log(`Long chat produced pending draft: ${draftId}`);
 
-  await request<ChatResponse>(`/assistant/drafts/${draftId}`, {
+  const revisedChat = await request<ChatResponse>(`/assistant/chats/${chatId}/messages`, {
+    method: 'POST',
+    token,
+    body: {
+      message: 'Change the pending draft priority to LOW, and keep the same title and description.',
+    },
+  });
+
+  const revisedDraftMessage = [...revisedChat.chat.messages]
+    .reverse()
+    .find((message) => message.draft?.status === 'PENDING');
+  assert.equal(revisedDraftMessage?.role, 'ASSISTANT');
+  assert.ok(revisedDraftMessage?.draft?.id);
+  assert.ok(nonEmptyCreateTaskDescription(revisedDraftMessage.draft.originalDraft));
+  const revisedDraftId = revisedDraftMessage.draft.id;
+  assert.notEqual(revisedDraftId, draftId);
+  console.log(`Pending draft was revised: ${revisedDraftId}`);
+
+  await request<ChatResponse>(`/assistant/drafts/${revisedDraftId}`, {
     method: 'PATCH',
     token,
     body: {
@@ -79,7 +99,63 @@ const main = async () => {
     },
   });
 
+  await testDescriptionRecreatedAfterDiscard(token);
+
   console.log('Live assistant test passed. The draft was discarded, so no task was created.');
+};
+
+const testDescriptionRecreatedAfterDiscard = async (token: string) => {
+  const created = await request<ChatResponse>('/assistant/chats', {
+    method: 'POST',
+    token,
+    body: {},
+  });
+  const chatId = created.chat.id;
+
+  const initialChat = await request<ChatResponse>(`/assistant/chats/${chatId}/messages`, {
+    method: 'POST',
+    token,
+    body: {
+      message: 'create a new task telling me to go to sleep',
+    },
+  });
+
+  const initialDraftMessage = latestPendingDraftMessage(initialChat);
+  assert.ok(initialDraftMessage?.draft?.id);
+
+  await request<ChatResponse>(`/assistant/drafts/${initialDraftMessage.draft.id}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      status: 'DISCARDED',
+    },
+  });
+
+  const recreatedChat = await request<ChatResponse>(`/assistant/chats/${chatId}/messages`, {
+    method: 'POST',
+    token,
+    body: {
+      message: 'add some description to that discarded draft',
+    },
+  });
+
+  const recreatedDraftMessage = latestPendingDraftMessage(recreatedChat);
+  assert.equal(recreatedDraftMessage?.role, 'ASSISTANT');
+  assert.ok(recreatedDraftMessage?.draft?.id);
+  assert.ok(
+    nonEmptyCreateTaskDescription(recreatedDraftMessage.draft.originalDraft),
+    'Expected recreated create_task draft to include a non-empty description',
+  );
+
+  await request<ChatResponse>(`/assistant/drafts/${recreatedDraftMessage.draft.id}`, {
+    method: 'PATCH',
+    token,
+    body: {
+      status: 'DISCARDED',
+    },
+  });
+
+  console.log('Discarded draft description recreation produced a non-empty description.');
 };
 
 const request = async <ResponseBody>(
@@ -110,6 +186,29 @@ const request = async <ResponseBody>(
 
   return body as ResponseBody;
 };
+
+const nonEmptyCreateTaskDescription = (draft: unknown) => {
+  if (!isRecord(draft) || !Array.isArray(draft.operations)) {
+    return false;
+  }
+
+  const createTaskOperation = draft.operations.find((operation) =>
+    isRecord(operation) && operation.type === 'create_task',
+  );
+
+  if (!isRecord(createTaskOperation) || !isRecord(createTaskOperation.input)) {
+    return false;
+  }
+
+  return typeof createTaskOperation.input.description === 'string'
+    && createTaskOperation.input.description.trim().length > 0;
+};
+
+const latestPendingDraftMessage = (response: ChatResponse) =>
+  [...response.chat.messages].reverse().find((message) => message.draft?.status === 'PENDING');
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 main().catch((error) => {
   console.error(error);

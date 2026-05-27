@@ -66,6 +66,9 @@ export const assistantRecentMessageSelect = {
   role: true,
   content: true,
   createdAt: true,
+  draft: {
+    select: assistantDraftSelect,
+  },
 } as const satisfies Prisma.AssistantMessageSelect;
 
 const assistantContextUserSelect = {

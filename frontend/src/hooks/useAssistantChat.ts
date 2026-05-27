@@ -93,7 +93,7 @@ export const useAssistantChat = ({ onTasksChanged }: UseAssistantChatOptions) =>
   const sendMessage = useCallback(async (rawMessage: string) => {
     const message = rawMessage.trim();
 
-    if (!message || sending || pendingDraft) {
+    if (!message || sending) {
       return;
     }
 
@@ -118,7 +118,7 @@ export const useAssistantChat = ({ onTasksChanged }: UseAssistantChatOptions) =>
     } finally {
       setSending(false);
     }
-  }, [chat, openChat, pendingDraft, refreshChatList, sending]);
+  }, [chat, openChat, refreshChatList, sending]);
 
   const handleDraftExecuted = useCallback(async (updatedChat: AssistantChat) => {
     setChat(updatedChat);

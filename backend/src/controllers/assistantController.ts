@@ -13,9 +13,9 @@ import {
   findAssistantDraftForUser,
   getAssistantChatForUser,
   getAssistantChatSnapshot,
+  getPendingDraftForChat,
   getRecentConversationForModel,
   getTaskContextForAssistant,
-  hasPendingDraft,
   listAssistantChats,
   markAssistantDraftDiscarded,
   markAssistantDraftExecuted,
@@ -107,19 +107,16 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       throw error;
     }
 
-    if (await hasPendingDraft(chatId)) {
-      return res.status(409).json({ error: 'Resolve the pending draft before sending another message' });
-    }
-
     await appendUserMessage(chatId, message);
     await maybeTitleChatFromMessage(chatId, message);
 
-    const [recentMessages, taskContext] = await Promise.all([
+    const [recentMessages, pendingDraft, taskContext] = await Promise.all([
       getRecentConversationForModel(chatId),
+      getPendingDraftForChat(chatId),
       getTaskContextForAssistant(userId),
     ]);
 
-    const modelResponse = await callAssistantModel(message, recentMessages, taskContext);
+    const modelResponse = await callAssistantModel(message, recentMessages, pendingDraft, taskContext);
 
     await appendAssistantModelResponse(chatId, modelResponse.message, modelResponse.draft);
 
@@ -200,12 +197,14 @@ export const updateDraft = async (req: AuthRequest, res: Response) => {
 const callAssistantModel = async (
   message: string,
   recentMessages: Awaited<ReturnType<typeof getRecentConversationForModel>>,
+  pendingDraft: Awaited<ReturnType<typeof getPendingDraftForChat>>,
   taskContext: Awaited<ReturnType<typeof getTaskContextForAssistant>>,
 ) => {
   try {
     return await generateAssistantResponse({
       userMessage: message,
       recentMessages,
+      pendingDraft,
       taskContext,
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 import type { CreateTaskInput, UpdateTaskInput } from './task';
 
 export type AssistantMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
-export type AssistantDraftStatus = 'PENDING' | 'EXECUTED' | 'DISCARDED' | 'FAILED';
+export type AssistantDraftStatus = 'PENDING' | 'SUPERSEDED' | 'EXECUTED' | 'DISCARDED' | 'FAILED';
 
 interface AssistantDraftOperationBase {
   id: string;
