@@ -9,6 +9,7 @@ import { TaskTable } from '../components/dashboard/TaskTable';
 import { useAuth } from '../auth/useAuth';
 import { findMatchingPresetId, useFilterPresets } from '../hooks/useFilterPresets';
 import { useTaskFilters } from '../hooks/useTaskFilters';
+import { useTaskRealtime } from '../hooks/useTaskRealtime';
 import { useTasks } from '../hooks/useTasks';
 import { buildTaskStats } from '../utils/taskFormatting';
 import { isTaskAssignedToUser } from '../utils/taskVisibility';
@@ -37,11 +38,18 @@ export const Dashboard = () => {
     () => tasks.filter((task) => isTaskAssignedToUser(task, user?.id)),
     [tasks, user?.id],
   );
+  const assignedTaskIds = useMemo(() => assignedTasks.map((task) => task.id), [assignedTasks]);
   const stats = useMemo(() => buildTaskStats(assignedTasks), [assignedTasks]);
   const activePresetId = useMemo(
     () => findMatchingPresetId(presets, filters),
     [filters, presets],
   );
+
+  useTaskRealtime({
+    taskIds: assignedTaskIds,
+    currentUserId: user?.id ?? null,
+    onExternalTaskChanged: refetch,
+  });
 
   const handleCreateTask = async (taskData: TaskEditableFields) => {
     setCreateBusy(true);
