@@ -46,6 +46,7 @@ let actor: ReturnType<typeof userEvent.setup>;
 let commentPostBody: unknown;
 let assignmentPatchBody: unknown;
 let currentTask: Task;
+let realtimeSockets: FakeWebSocket[];
 
 describe('Feature: task detail comment and error flows', () => {
   beforeEach(() => {
@@ -53,7 +54,9 @@ describe('Feature: task detail comment and error flows', () => {
     commentPostBody = null;
     assignmentPatchBody = null;
     currentTask = task;
+    realtimeSockets = [];
     localStorage.setItem('token', 'auth-token');
+    vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
 
@@ -103,6 +106,32 @@ describe('Feature: task detail comment and error flows', () => {
       });
     });
     expect(screen.getByRole('button', { name: /^save assignments$/i })).toBeDisabled();
+  });
+
+  it('reloads the task and shows live activity when another user changes it', async () => {
+    renderAppAt('/tasks/task-1');
+
+    await screen.findByRole('heading', { name: task.title });
+    await waitFor(() => {
+      expect(realtimeSockets).toHaveLength(1);
+    });
+
+    currentTask = {
+      ...currentTask,
+      title: 'Design dashboard UI refresh',
+      updatedAt: new Date('2026-05-02T13:00:00.000Z').toISOString(),
+    };
+
+    realtimeSockets[0].receive({
+      type: 'task.changed',
+      taskId: task.id,
+      action: 'updated',
+      actorUserId: secondUser.id,
+      occurredAt: new Date('2026-05-02T13:00:00.000Z').toISOString(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Design dashboard UI refresh' })).toBeInTheDocument();
+    expect(screen.getByText(/task fields changed by another user/i)).toBeInTheDocument();
   });
 
   it('hides comment entry and owner controls for an unassigned viewer', async () => {
@@ -199,3 +228,49 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
 
   throw new Error(`Unexpected request: ${method} ${url}`);
 };
+
+type FakeWebSocketEvent = {
+  code?: number;
+  data?: string;
+};
+
+type FakeWebSocketListener = (event: FakeWebSocketEvent) => void;
+
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+
+  readonly sentMessages: string[] = [];
+  readonly url: string;
+  readyState = FakeWebSocket.OPEN;
+  private readonly listeners: Record<string, FakeWebSocketListener[]> = {};
+
+  constructor(url: string) {
+    this.url = url;
+    realtimeSockets.push(this);
+    window.setTimeout(() => this.emit('open', {}), 0);
+  }
+
+  addEventListener(type: string, listener: FakeWebSocketListener) {
+    this.listeners[type] = [...(this.listeners[type] ?? []), listener];
+  }
+
+  send(message: string) {
+    this.sentMessages.push(message);
+  }
+
+  close() {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.emit('close', { code: 1000 });
+  }
+
+  receive(message: unknown) {
+    this.emit('message', { data: JSON.stringify(message) });
+  }
+
+  private emit(type: string, event: FakeWebSocketEvent) {
+    for (const listener of this.listeners[type] ?? []) {
+      listener(event);
+    }
+  }
+}
