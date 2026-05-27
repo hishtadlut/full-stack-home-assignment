@@ -9,3 +9,6 @@ export const isRecordNotFoundError = (error: unknown) =>
 
 export const isForeignKeyConstraintError = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
+
+export const isUniqueConstraintError = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';

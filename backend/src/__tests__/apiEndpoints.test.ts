@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import type { Express } from 'express';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOGIN_RATE_LIMIT_ERROR } from '../constants/auth';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'endpoint-test-secret';
@@ -99,6 +100,7 @@ vi.mock('../db/prisma', () => ({
   prisma: mocks.prisma,
   isRecordNotFoundError: (error: unknown) => error instanceof mocks.PrismaClientKnownRequestError && error.code === 'P2025',
   isForeignKeyConstraintError: (error: unknown) => error instanceof mocks.PrismaClientKnownRequestError && error.code === 'P2003',
+  isUniqueConstraintError: (error: unknown) => error instanceof mocks.PrismaClientKnownRequestError && error.code === 'P2002',
 }));
 
 vi.mock('bcryptjs', () => ({
@@ -197,15 +199,18 @@ const successfulExecution = {
 };
 
 let app: Express;
+let resetLoginRateLimits: () => void;
 
 beforeAll(async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
+  resetLoginRateLimits = (await import('../utils/loginRateLimit.js')).resetLoginRateLimits;
   app = (await import('../app.js')).app;
 });
 
 beforeEach(() => {
   resetMockTree(mocks);
+  resetLoginRateLimits();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -356,6 +361,21 @@ describe('auth endpoints', () => {
     expectError(response, 409, 'User already exists');
   });
 
+  it('POST /api/auth/register reports duplicate users from unique constraint races', async () => {
+    mocks.prisma.user.findFirst.mockResolvedValue(null);
+    mocks.prisma.user.create.mockRejectedValue(new mocks.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+    }));
+
+    const response = await request(app).post('/api/auth/register').send({
+      email: user.email,
+      username: user.username,
+      password: 'password123',
+    });
+
+    expectError(response, 409, 'User already exists');
+  });
+
   it('POST /api/auth/register reports unexpected persistence errors', async () => {
     mocks.prisma.user.findFirst.mockRejectedValue(new Error('database down'));
 
@@ -427,6 +447,31 @@ describe('auth endpoints', () => {
     });
 
     expectError(response, 401, 'Invalid credentials');
+  });
+
+  it('POST /api/auth/login throttles repeated failed attempts', async () => {
+    mocks.prisma.user.findFirst.mockResolvedValue({
+      ...user,
+      password: 'hashed-password',
+    });
+    mocks.bcryptCompare.mockResolvedValue(false);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failedResponse = await request(app).post('/api/auth/login').send({
+        email: user.email,
+        password: 'wrong-password',
+      });
+
+      expectError(failedResponse, 401, 'Invalid credentials');
+    }
+
+    const throttledResponse = await request(app).post('/api/auth/login').send({
+      email: user.email,
+      password: 'wrong-password',
+    });
+
+    expectError(throttledResponse, 429, LOGIN_RATE_LIMIT_ERROR);
+    expect(mocks.bcryptCompare).toHaveBeenCalledTimes(5);
   });
 
   it('POST /api/auth/login reports unexpected persistence errors', async () => {
