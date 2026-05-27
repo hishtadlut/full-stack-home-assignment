@@ -12,7 +12,6 @@ This is a Task Management application that allows users to:
 - Create and manage tasks
 - Add comments to tasks when assigned
 - Assign tasks to team members
-- Tag tasks for better organization
 - Use a Gemini-powered assistant to query tasks and draft task/comment changes before applying them
 
 ## Tech Stack
