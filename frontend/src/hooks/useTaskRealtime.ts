@@ -25,7 +25,8 @@ export interface TaskRealtimeNotification {
 }
 
 interface UseTaskRealtimeOptions {
-  taskId: string | undefined;
+  taskId?: string;
+  taskIds?: string[];
   currentUserId: string | null;
   onExternalTaskChanged: () => void;
 }
@@ -36,11 +37,14 @@ const MAX_NOTIFICATIONS = 5;
 
 export const useTaskRealtime = ({
   taskId,
+  taskIds,
   currentUserId,
   onExternalTaskChanged,
 }: UseTaskRealtimeOptions) => {
   const [notifications, setNotifications] = useState<TaskRealtimeNotification[]>([]);
   const optionsRef = useRef({ currentUserId, onExternalTaskChanged });
+  const subscribedTaskIds = uniqueTaskIds(taskIds ?? (taskId ? [taskId] : []));
+  const subscriptionKey = subscribedTaskIds.join('|');
 
   useEffect(() => {
     optionsRef.current = { currentUserId, onExternalTaskChanged };
@@ -48,28 +52,35 @@ export const useTaskRealtime = ({
 
   useEffect(() => {
     setNotifications([]);
-  }, [taskId]);
+  }, [subscriptionKey]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
 
-    if (!taskId || !token || typeof window.WebSocket === 'undefined') {
+    if (subscribedTaskIds.length === 0 || !token || typeof window.WebSocket === 'undefined') {
       return undefined;
     }
 
     let closed = false;
     let reconnectTimer: number | undefined;
     let socket: WebSocket | null = null;
+    const subscribedTaskIdSet = new Set(subscribedTaskIds);
 
     const connect = () => {
       socket = new window.WebSocket(taskRealtimeUrl(token));
 
       socket.addEventListener('open', () => {
-        socket?.send(JSON.stringify({ type: 'subscribe', taskId }));
+        if (closed) {
+          return;
+        }
+
+        subscribedTaskIds.forEach((subscribedTaskId) => {
+          socket?.send(JSON.stringify({ type: 'subscribe', taskId: subscribedTaskId }));
+        });
       });
 
       socket.addEventListener('message', (event) => {
-        const message = parseTaskChangedEvent(event.data, taskId);
+        const message = parseTaskChangedEvent(event.data, subscribedTaskIdSet);
 
         if (!message) {
           return;
@@ -100,12 +111,14 @@ export const useTaskRealtime = ({
       }
 
       if (socket?.readyState === window.WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'unsubscribe', taskId }));
+        subscribedTaskIds.forEach((subscribedTaskId) => {
+          socket?.send(JSON.stringify({ type: 'unsubscribe', taskId: subscribedTaskId }));
+        });
       }
 
       socket?.close();
     };
-  }, [taskId]);
+  }, [subscriptionKey]);
 
   return notifications;
 };
@@ -120,7 +133,7 @@ const taskRealtimeUrl = (token: string) => {
   return url.toString();
 };
 
-const parseTaskChangedEvent = (data: unknown, taskId: string): TaskChangedEvent | null => {
+const parseTaskChangedEvent = (data: unknown, taskIds: Set<string>): TaskChangedEvent | null => {
   if (typeof data !== 'string') {
     return null;
   }
@@ -129,7 +142,8 @@ const parseTaskChangedEvent = (data: unknown, taskId: string): TaskChangedEvent 
     const message = JSON.parse(data) as Partial<TaskChangedEvent>;
 
     return message.type === 'task.changed' &&
-      message.taskId === taskId &&
+      typeof message.taskId === 'string' &&
+      taskIds.has(message.taskId) &&
       isTaskChangedAction(message.action) &&
       typeof message.actorUserId === 'string' &&
       typeof message.occurredAt === 'string'
@@ -148,3 +162,6 @@ const notificationFor = (event: TaskChangedEvent): TaskRealtimeNotification => (
 
 const isTaskChangedAction = (value: unknown): value is TaskChangedAction =>
   typeof value === 'string' && value in ACTION_MESSAGES;
+
+const uniqueTaskIds = (taskIds: string[]) =>
+  [...new Set(taskIds.filter((taskId) => taskId.trim().length > 0))].sort();

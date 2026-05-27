@@ -41,13 +41,16 @@ const baseTasks: Task[] = [
 let actor: ReturnType<typeof userEvent.setup>;
 let taskRequestUrls: string[];
 let tasks: Task[];
+let realtimeSockets: FakeWebSocket[];
 
 describe('Feature: dashboard filters are reflected in the URL and task requests', () => {
   beforeEach(() => {
     actor = userEvent.setup();
     taskRequestUrls = [];
     tasks = [...baseTasks];
+    realtimeSockets = [];
     localStorage.setItem('token', 'auth-token');
+    vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
 
@@ -171,6 +174,34 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
       expect(screen.getByText('No tasks match this view')).toBeInTheDocument();
     });
   });
+
+  it('refreshes dashboard tasks when a websocket update arrives', async () => {
+    renderAppAt('/dashboard');
+
+    await screen.findByText('Implement user authentication');
+    await waitFor(() => {
+      expect(realtimeSockets).toHaveLength(1);
+      expect(realtimeSockets[0].sentMessages).toContain(JSON.stringify({ type: 'subscribe', taskId: 'task-1' }));
+    });
+
+    tasks = [
+      {
+        ...baseTasks[0],
+        title: 'Implement websocket refresh',
+        updatedAt: new Date('2026-05-03T12:00:00.000Z').toISOString(),
+      },
+    ];
+
+    realtimeSockets[0].receive({
+      type: 'task.changed',
+      taskId: 'task-1',
+      action: 'updated',
+      actorUserId: 'user-2',
+      occurredAt: new Date('2026-05-03T12:00:00.000Z').toISOString(),
+    });
+
+    expect(await screen.findByText('Implement websocket refresh')).toBeInTheDocument();
+  });
 });
 
 const renderAppAt = (path: string) => {
@@ -226,3 +257,49 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
 
   throw new Error(`Unexpected request: ${method} ${url}`);
 };
+
+type FakeWebSocketEvent = {
+  code?: number;
+  data?: string;
+};
+
+type FakeWebSocketListener = (event: FakeWebSocketEvent) => void;
+
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  static readonly CLOSED = 3;
+
+  readonly sentMessages: string[] = [];
+  readonly url: string;
+  readyState = FakeWebSocket.OPEN;
+  private readonly listeners: Record<string, FakeWebSocketListener[]> = {};
+
+  constructor(url: string) {
+    this.url = url;
+    realtimeSockets.push(this);
+    window.setTimeout(() => this.emit('open', {}), 0);
+  }
+
+  addEventListener(type: string, listener: FakeWebSocketListener) {
+    this.listeners[type] = [...(this.listeners[type] ?? []), listener];
+  }
+
+  send(message: string) {
+    this.sentMessages.push(message);
+  }
+
+  close() {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.emit('close', { code: 1000 });
+  }
+
+  receive(message: unknown) {
+    this.emit('message', { data: JSON.stringify(message) });
+  }
+
+  private emit(type: string, event: FakeWebSocketEvent) {
+    for (const listener of this.listeners[type] ?? []) {
+      listener(event);
+    }
+  }
+}
