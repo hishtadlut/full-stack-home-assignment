@@ -4,6 +4,9 @@ import type { AssistantDraftShape } from './types';
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    user: {
+      findUnique: vi.fn(),
+    },
     task: {
       create: vi.fn(),
       update: vi.fn(),
@@ -17,6 +20,8 @@ const mocks = vi.hoisted(() => {
       delete: vi.fn(),
     },
     taskAssignment: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
       deleteMany: vi.fn(),
     },
     taskTag: {
@@ -76,6 +81,20 @@ const fullDraft: AssistantDraftShape = {
       taskId: 'task-3',
     },
     {
+      id: 'assign-task',
+      type: 'assign_task',
+      label: 'Assign task',
+      taskId: 'task-6',
+      userId: 'user-2',
+    },
+    {
+      id: 'unassign-task',
+      type: 'unassign_task',
+      label: 'Unassign task',
+      taskId: 'task-7',
+      userId: 'user-3',
+    },
+    {
       id: 'create-comment',
       type: 'create_comment',
       label: 'Create comment',
@@ -108,7 +127,11 @@ describe('executeApprovedDraft', () => {
     mocks.tx.task.delete.mockResolvedValue({ id: 'deleted-task' });
     mocks.tx.task.findFirst
       .mockResolvedValueOnce({ id: 'task-3' })
-      .mockResolvedValueOnce({ id: 'task-4' });
+      .mockResolvedValueOnce({ id: 'task-6' })
+      .mockResolvedValueOnce({ id: 'task-7' })
+      .mockResolvedValueOnce({ id: 'task-4', assignments: [{ id: 'assignment-1' }] });
+    mocks.tx.user.findUnique.mockResolvedValue({ id: 'user-2' });
+    mocks.tx.taskAssignment.findFirst.mockResolvedValue(null);
     mocks.tx.comment.create.mockResolvedValue({ id: 'created-comment' });
     mocks.tx.comment.findFirst.mockResolvedValue({ id: 'comment-5', taskId: 'task-5' });
     mocks.tx.comment.delete.mockResolvedValue({ id: 'comment-5' });
@@ -121,6 +144,8 @@ describe('executeApprovedDraft', () => {
         { operationId: 'create-task', type: 'create_task', ok: true, entityId: 'created-task', taskId: 'created-task' },
         { operationId: 'update-task', type: 'update_task', ok: true, entityId: 'updated-task', taskId: 'updated-task' },
         { operationId: 'delete-task', type: 'delete_task', ok: true, entityId: 'task-3', taskId: 'task-3' },
+        { operationId: 'assign-task', type: 'assign_task', ok: true, entityId: 'user-2', taskId: 'task-6' },
+        { operationId: 'unassign-task', type: 'unassign_task', ok: true, entityId: 'user-3', taskId: 'task-7' },
         { operationId: 'create-comment', type: 'create_comment', ok: true, entityId: 'created-comment', taskId: 'task-4' },
         { operationId: 'delete-comment', type: 'delete_comment', ok: true, entityId: 'comment-5', taskId: 'task-5' },
       ],
@@ -132,6 +157,23 @@ describe('executeApprovedDraft', () => {
         status: 'TODO',
         priority: 'HIGH',
         userId,
+        assignments: {
+          create: {
+            userId,
+          },
+        },
+      },
+    });
+    expect(mocks.tx.taskAssignment.create).toHaveBeenCalledWith({
+      data: {
+        taskId: 'task-6',
+        userId: 'user-2',
+      },
+    });
+    expect(mocks.tx.taskAssignment.deleteMany).toHaveBeenCalledWith({
+      where: {
+        taskId: 'task-7',
+        userId: 'user-3',
       },
     });
     expect(mocks.tx.comment.delete).toHaveBeenCalledWith({
@@ -169,11 +211,16 @@ describe('executeApprovedDraft', () => {
         status: 'TODO',
         priority: 'MEDIUM',
         userId,
+        assignments: {
+          create: {
+            userId,
+          },
+        },
       },
     });
   });
 
-  it('rejects create_comment when the task is not owned by the user', async () => {
+  it('rejects create_comment when the task is not visible to the user', async () => {
     mocks.tx.task.findFirst.mockResolvedValue(null);
 
     await expect(
@@ -193,6 +240,78 @@ describe('executeApprovedDraft', () => {
         ],
       }),
     ).rejects.toThrow(new DraftExecutionError('Task not found'));
+  });
+
+  it('rejects create_comment when the user is not assigned to the task', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue({ id: 'task-1', assignments: [] });
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Create a comment',
+        operations: [
+          {
+            id: 'create-comment',
+            type: 'create_comment',
+            label: 'Create comment',
+            taskId: 'task-1',
+            input: {
+              content: 'Comment',
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('Only assigned users can comment on this task'));
+  });
+
+  it('rejects assign_task when the assignee does not exist', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue({ id: 'task-1' });
+    mocks.tx.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      executeApprovedDraft(userId, {
+        schemaVersion: 1,
+        summary: 'Assign a task',
+        operations: [
+          {
+            id: 'assign-task',
+            type: 'assign_task',
+            label: 'Assign task',
+            taskId: 'task-1',
+            userId: 'missing-user',
+          },
+        ],
+      }),
+    ).rejects.toThrow(new DraftExecutionError('User not found'));
+  });
+
+  it('does not create a duplicate assignment when assign_task is already satisfied', async () => {
+    mocks.tx.task.findFirst.mockResolvedValue({ id: 'task-1' });
+    mocks.tx.user.findUnique.mockResolvedValue({ id: 'user-2' });
+    mocks.tx.taskAssignment.findFirst.mockResolvedValue({ id: 'assignment-1' });
+
+    const result = await executeApprovedDraft(userId, {
+      schemaVersion: 1,
+      summary: 'Assign a task',
+      operations: [
+        {
+          id: 'assign-task',
+          type: 'assign_task',
+          label: 'Assign task',
+          taskId: 'task-1',
+          userId: 'user-2',
+        },
+      ],
+    });
+
+    expect(result.operations[0]).toMatchObject({
+      operationId: 'assign-task',
+      type: 'assign_task',
+      ok: true,
+      entityId: 'user-2',
+      taskId: 'task-1',
+    });
+    expect(mocks.tx.taskAssignment.create).not.toHaveBeenCalled();
   });
 
   it('rejects delete_comment when the comment is not owned by the user', async () => {

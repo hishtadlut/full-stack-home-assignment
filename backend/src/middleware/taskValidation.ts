@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { TASK_PRIORITIES, TASK_SEARCH_MAX_LENGTH, TASK_STATUSES } from '../constants/task';
+import { TASK_ASSIGNMENT_USER_LIMIT, TASK_PRIORITIES, TASK_SEARCH_MAX_LENGTH, TASK_STATUSES } from '../constants/task';
 import { hasAnyField, hasField, hasText, hasValue, isOneOf, isString } from './validation';
 
 const TASK_EDITABLE_FIELDS = ['title', 'description', 'status', 'priority'] as const;
@@ -86,5 +86,36 @@ export const validateUpdateTask = (req: Request, res: Response, next: NextFuncti
   }
 
   req.body = body;
+  next();
+};
+
+export const validateTaskAssignments = (req: Request, res: Response, next: NextFunction) => {
+  const body = req.body as Record<string, unknown>;
+
+  if (!Array.isArray(body.userIds)) {
+    return res.status(400).json({ error: 'userIds must be an array' });
+  }
+
+  if (body.userIds.length > TASK_ASSIGNMENT_USER_LIMIT) {
+    return res.status(400).json({ error: `A task can have at most ${TASK_ASSIGNMENT_USER_LIMIT} assignees` });
+  }
+
+  const userIds: string[] = [];
+  const seenUserIds = new Set<string>();
+
+  for (const userId of body.userIds) {
+    if (!hasText(userId)) {
+      return res.status(400).json({ error: 'Each assignee id must be a non-empty string' });
+    }
+
+    const normalizedUserId = userId.trim();
+
+    if (!seenUserIds.has(normalizedUserId)) {
+      seenUserIds.add(normalizedUserId);
+      userIds.push(normalizedUserId);
+    }
+  }
+
+  req.body = { userIds };
   next();
 };

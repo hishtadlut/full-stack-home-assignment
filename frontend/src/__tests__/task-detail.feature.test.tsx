@@ -15,7 +15,21 @@ const task: Task = {
   userId: seededUser.id,
   createdAt: new Date('2026-05-01T10:00:00.000Z').toISOString(),
   updatedAt: new Date('2026-05-02T10:00:00.000Z').toISOString(),
-  assignments: [],
+  assignments: [
+    {
+      id: 'assignment-1',
+      taskId: 'task-1',
+      userId: seededUser.id,
+      user: seededUser,
+    },
+  ],
+};
+
+const secondUser = {
+  id: 'user-2',
+  email: 'jane@example.com',
+  username: 'janedoe',
+  name: 'Jane Doe',
 };
 
 const initialComment: Comment = {
@@ -30,11 +44,15 @@ const initialComment: Comment = {
 
 let actor: ReturnType<typeof userEvent.setup>;
 let commentPostBody: unknown;
+let assignmentPatchBody: unknown;
+let currentTask: Task;
 
 describe('Feature: task detail comment and error flows', () => {
   beforeEach(() => {
     actor = userEvent.setup();
     commentPostBody = null;
+    assignmentPatchBody = null;
+    currentTask = task;
     localStorage.setItem('token', 'auth-token');
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
@@ -70,6 +88,45 @@ describe('Feature: task detail comment and error flows', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Delete failed');
     });
   });
+
+  it('lets the task owner update assignees from the detail panel', async () => {
+    renderAppAt('/tasks/task-1');
+
+    await screen.findByRole('heading', { name: task.title });
+
+    await actor.click(screen.getByRole('checkbox', { name: /jane doe/i }));
+    await actor.click(screen.getByRole('button', { name: /^save assignments$/i }));
+
+    await waitFor(() => {
+      expect(assignmentPatchBody).toEqual({
+        userIds: [seededUser.id, secondUser.id],
+      });
+    });
+    expect(screen.getByRole('button', { name: /^save assignments$/i })).toBeDisabled();
+  });
+
+  it('hides comment entry and owner controls for an unassigned viewer', async () => {
+    currentTask = {
+      ...task,
+      userId: secondUser.id,
+      assignments: [
+        {
+          id: 'assignment-2',
+          taskId: task.id,
+          userId: secondUser.id,
+          user: secondUser,
+        },
+      ],
+    };
+
+    renderAppAt('/tasks/task-1');
+
+    await screen.findByRole('heading', { name: task.title });
+
+    expect(screen.getByText(/only assigned users can add comments/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^add comment$/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+  });
 });
 
 const renderAppAt = (path: string) => {
@@ -90,11 +147,15 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
 
   if (method === 'GET' && url.endsWith('/api/tasks/task-1')) {
-    return jsonResponse(task);
+    return jsonResponse(currentTask);
   }
 
   if (method === 'GET' && url.endsWith('/api/comments?taskId=task-1')) {
     return jsonResponse([initialComment]);
+  }
+
+  if (method === 'GET' && url.endsWith('/api/users')) {
+    return jsonResponse({ users: [seededUser, secondUser] });
   }
 
   if (method === 'POST' && url.endsWith('/api/comments')) {
@@ -107,6 +168,29 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
       createdAt: new Date('2026-05-02T12:00:00.000Z').toISOString(),
       updatedAt: new Date('2026-05-02T12:00:00.000Z').toISOString(),
     }, { status: 201 });
+  }
+
+  if (method === 'PATCH' && url.endsWith('/api/tasks/task-1/assignments')) {
+    assignmentPatchBody = JSON.parse(String(init?.body));
+    currentTask = {
+      ...currentTask,
+      assignments: [
+        {
+          id: 'assignment-1',
+          taskId: task.id,
+          userId: seededUser.id,
+          user: seededUser,
+        },
+        {
+          id: 'assignment-2',
+          taskId: task.id,
+          userId: secondUser.id,
+          user: secondUser,
+        },
+      ],
+    };
+
+    return jsonResponse(currentTask);
   }
 
   if (method === 'DELETE' && url.endsWith('/api/tasks/task-1')) {

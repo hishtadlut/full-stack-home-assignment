@@ -68,6 +68,8 @@ const isExecutionResult = (value: unknown): value is AssistantExecutionResult =>
 const isTaskLinkOperation = (type: string) =>
   type === 'create_task' ||
   type === 'update_task' ||
+  type === 'assign_task' ||
+  type === 'unassign_task' ||
   type === 'create_comment' ||
   type === 'delete_comment';
 
@@ -90,6 +92,10 @@ const labelForOperation = (type: AssistantExecutionResult['operations'][number][
 
   if (type === 'create_comment') {
     return 'Open commented task';
+  }
+
+  if (type === 'assign_task' || type === 'unassign_task') {
+    return 'Open assigned task';
   }
 
   return 'Open task';

@@ -71,7 +71,7 @@ export const assistantRecentMessageSelect = {
   },
 } as const satisfies Prisma.AssistantMessageSelect;
 
-const assistantContextUserSelect = {
+export const assistantContextUserSelect = {
   id: true,
   username: true,
   name: true,
@@ -95,6 +95,16 @@ export const assistantTaskContextSelect = {
   priority: true,
   createdAt: true,
   updatedAt: true,
+  user: {
+    select: assistantContextUserSelect,
+  },
+  assignments: {
+    select: {
+      user: {
+        select: assistantContextUserSelect,
+      },
+    },
+  },
   comments: {
     orderBy: { createdAt: 'desc' },
     take: ASSISTANT_TASK_CONTEXT_COMMENT_LIMIT,

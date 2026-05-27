@@ -7,6 +7,7 @@ interface TaskDetailHeaderProps {
   task: Task;
   editing: boolean;
   saving: boolean;
+  canManageTask: boolean;
   error: string | null;
   onToggleEdit: () => void;
   onDelete: () => Promise<void> | void;
@@ -16,6 +17,7 @@ export const TaskDetailHeader = ({
   task,
   editing,
   saving,
+  canManageTask,
   error,
   onToggleEdit,
   onDelete,
@@ -32,21 +34,23 @@ export const TaskDetailHeader = ({
           {task.description || 'No description yet.'}
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <button type="button" onClick={onToggleEdit} className={buttonStyles('secondary')}>
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-          {editing ? 'Close Edit' : 'Edit'}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={saving}
-          className={`${buttonStyles('danger')} disabled:cursor-not-allowed disabled:opacity-60`}
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          Delete
-        </button>
-      </div>
+      {canManageTask && (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button type="button" onClick={onToggleEdit} className={buttonStyles('secondary')}>
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            {editing ? 'Close Edit' : 'Edit'}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={saving}
+            className={`${buttonStyles('danger')} disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Delete
+          </button>
+        </div>
+      )}
     </div>
 
     {error && (

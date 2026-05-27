@@ -141,6 +141,24 @@ const normalizeOperation = (
         taskId: normalizeId(value.taskId, 'Task id is required'),
       };
 
+    case 'assign_task':
+      return {
+        id,
+        label,
+        type: value.type,
+        taskId: normalizeId(value.taskId, 'Task id is required'),
+        userId: normalizeId(value.userId, 'User id is required'),
+      };
+
+    case 'unassign_task':
+      return {
+        id,
+        label,
+        type: value.type,
+        taskId: normalizeId(value.taskId, 'Task id is required'),
+        userId: normalizeId(value.userId, 'User id is required'),
+      };
+
     case 'create_comment':
       return {
         id,
@@ -307,6 +325,10 @@ const labelForType = (type: AssistantDraftOperation['type']) => {
       return 'Update task';
     case 'delete_task':
       return 'Delete task';
+    case 'assign_task':
+      return 'Assign task';
+    case 'unassign_task':
+      return 'Unassign task';
     case 'create_comment':
       return 'Create comment';
     case 'delete_comment':

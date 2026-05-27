@@ -146,25 +146,17 @@ async function main() {
   });
 
   // Create task assignments
-  await prisma.taskAssignment.create({
-    data: {
-      taskId: task1.id,
-      userId: user2.id,
-    },
-  });
-
-  await prisma.taskAssignment.create({
-    data: {
-      taskId: task1.id,
-      userId: user3.id,
-    },
-  });
-
-  await prisma.taskAssignment.create({
-    data: {
-      taskId: task3.id,
-      userId: user1.id,
-    },
+  await prisma.taskAssignment.createMany({
+    data: [
+      { taskId: task1.id, userId: user1.id },
+      { taskId: task1.id, userId: user2.id },
+      { taskId: task1.id, userId: user3.id },
+      { taskId: task2.id, userId: user1.id },
+      { taskId: task3.id, userId: user1.id },
+      { taskId: task3.id, userId: user2.id },
+      { taskId: task4.id, userId: user1.id },
+      { taskId: task5.id, userId: user2.id },
+    ],
   });
 
   // Create comments

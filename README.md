@@ -10,7 +10,7 @@ This is a Task Management application that allows users to:
 
 - Register and authenticate
 - Create and manage tasks
-- Add comments to tasks
+- Add comments to tasks when assigned
 - Assign tasks to team members
 - Tag tasks for better organization
 - Use a Gemini-powered assistant to query tasks and draft task/comment changes before applying them
@@ -161,7 +161,12 @@ full-stack-home-assignment/
 - `GET /api/tasks/:id` - Get task by ID
 - `POST /api/tasks` - Create a new task
 - `PATCH /api/tasks/:id` - Update task fields
+- `PATCH /api/tasks/:id/assignments` - Update task assignees
 - `DELETE /api/tasks/:id` - Delete a task
+
+### Users
+
+- `GET /api/users` - List users available for task assignment
 
 ### Comments
 
@@ -185,7 +190,7 @@ Assistant behavior:
 
 - Reads are answered directly from backend task/comment context without creating drafts.
 - Writes are never applied directly by the model.
-- Create/update/delete task and comment requests produce a structured draft first.
+- Create/update/delete task, assignment, and comment requests produce a structured draft first.
 - Drafts are rendered as editable forms in the UI.
 - Users can approve, edit, discard, or ask the assistant to revise a pending draft.
 - Delete drafts show a destructive warning and approval action.

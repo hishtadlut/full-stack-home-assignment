@@ -35,6 +35,7 @@ export const assistantResponseJsonSchema = {
                   label: { type: 'string' },
                   taskId: { type: 'string' },
                   commentId: { type: 'string' },
+                  userId: { type: 'string' },
                   input: {
                     type: 'object',
                     additionalProperties: false,

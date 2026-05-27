@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
   const prisma = {
     user: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       findUnique: vi.fn(),
     },
@@ -51,6 +52,9 @@ const mocks = vi.hoisted(() => {
       delete: vi.fn(),
     },
     taskAssignment: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      createMany: vi.fn(),
       deleteMany: vi.fn(),
     },
     taskTag: {
@@ -541,6 +545,29 @@ describe('auth endpoints', () => {
   });
 });
 
+describe('user endpoints', () => {
+  it('GET /api/users lists assignable users', async () => {
+    mocks.prisma.user.findMany.mockResolvedValue([user]);
+
+    const response = await request(app).get('/api/users').set('Authorization', authHeader());
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ users: [user] });
+    expect(mocks.prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.any(Object),
+      orderBy: { username: 'asc' },
+    }));
+  });
+
+  it('GET /api/users reports unexpected persistence errors', async () => {
+    mocks.prisma.user.findMany.mockRejectedValue(new Error('database down'));
+
+    const response = await request(app).get('/api/users').set('Authorization', authHeader());
+
+    expectError(response, 500, 'Failed to list users');
+  });
+});
+
 describe('task endpoints', () => {
   it('GET /api/tasks lists tasks for the authenticated user', async () => {
     mocks.prisma.task.findMany.mockResolvedValue([task]);
@@ -555,7 +582,13 @@ describe('task endpoints', () => {
     expect(response.body[0]).toMatchObject({ id: task.id, title: task.title });
     expect(mocks.prisma.task.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        userId: user.id,
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({ userId: user.id }),
+            ]),
+          }),
+        ]),
         status: 'TODO',
         priority: 'MEDIUM',
       }),
@@ -592,7 +625,7 @@ describe('task endpoints', () => {
   });
 
   it('GET /api/tasks/:id returns a task with assignments and comments', async () => {
-    mocks.prisma.task.findUnique.mockResolvedValue(task);
+    mocks.prisma.task.findFirst.mockResolvedValue(task);
 
     const response = await request(app).get(`/api/tasks/${task.id}`).set('Authorization', authHeader());
 
@@ -601,7 +634,7 @@ describe('task endpoints', () => {
   });
 
   it('GET /api/tasks/:id reports missing tasks', async () => {
-    mocks.prisma.task.findUnique.mockResolvedValue(null);
+    mocks.prisma.task.findFirst.mockResolvedValue(null);
 
     const response = await request(app).get('/api/tasks/missing').set('Authorization', authHeader());
 
@@ -609,7 +642,7 @@ describe('task endpoints', () => {
   });
 
   it('GET /api/tasks/:id reports unexpected persistence errors', async () => {
-    mocks.prisma.task.findUnique.mockRejectedValue(new Error('database down'));
+    mocks.prisma.task.findFirst.mockRejectedValue(new Error('database down'));
 
     const response = await request(app).get(`/api/tasks/${task.id}`).set('Authorization', authHeader());
 
@@ -638,7 +671,13 @@ describe('task endpoints', () => {
         status: 'TODO',
         priority: 'MEDIUM',
         userId: user.id,
+        assignments: {
+          create: {
+            userId: user.id,
+          },
+        },
       },
+      include: expect.any(Object),
     });
   });
 
@@ -724,6 +763,103 @@ describe('task endpoints', () => {
     expectError(response, 500, 'Failed to update task');
   });
 
+  it('PATCH /api/tasks/:id/assignments replaces task assignees for the task owner', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.user.findMany.mockResolvedValue([{ id: user.id }, { id: 'user-2' }]);
+    mocks.prisma.task.findUnique.mockResolvedValue({
+      ...task,
+      assignments: [
+        { id: 'assignment-1', taskId: task.id, userId: user.id },
+        { id: 'assignment-2', taskId: task.id, userId: 'user-2' },
+      ],
+    });
+
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}/assignments`)
+      .set('Authorization', authHeader())
+      .send({ userIds: [user.id, 'user-2', user.id] });
+
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: task.id } });
+    expect(mocks.prisma.taskAssignment.createMany).toHaveBeenCalledWith({
+      data: [
+        { taskId: task.id, userId: user.id },
+        { taskId: task.id, userId: 'user-2' },
+      ],
+    });
+  });
+
+  it('PATCH /api/tasks/:id/assignments rejects unknown assignees', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.user.findMany.mockResolvedValue([{ id: user.id }]);
+
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}/assignments`)
+      .set('Authorization', authHeader())
+      .send({ userIds: [user.id, 'missing-user'] });
+
+    expectError(response, 400, 'One or more assignees do not exist');
+  });
+
+  it('PATCH /api/tasks/:id/assignments clears assignees when the owner sends an empty list', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.task.findUnique.mockResolvedValue({
+      ...task,
+      assignments: [],
+    });
+
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}/assignments`)
+      .set('Authorization', authHeader())
+      .send({ userIds: [] });
+
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.user.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: task.id } });
+    expect(mocks.prisma.taskAssignment.createMany).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/tasks/:id/assignments reports missing owned tasks', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue(null);
+
+    const response = await request(app)
+      .patch('/api/tasks/missing/assignments')
+      .set('Authorization', authHeader())
+      .send({ userIds: [user.id] });
+
+    expectError(response, 404, 'Task not found');
+  });
+
+  it('PATCH /api/tasks/:id/assignments reports persistence errors', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.user.findMany.mockResolvedValue([{ id: user.id }]);
+    mocks.prisma.taskAssignment.deleteMany.mockRejectedValue(new Error('database down'));
+
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}/assignments`)
+      .set('Authorization', authHeader())
+      .send({ userIds: [user.id] });
+
+    expectError(response, 500, 'Failed to update task assignments');
+  });
+
+  it.each([
+    ['PATCH /api/tasks/:id/assignments rejects missing arrays', {}, 'userIds must be an array'],
+    ['PATCH /api/tasks/:id/assignments rejects invalid user ids', { userIds: [' '] }, 'Each assignee id must be a non-empty string'],
+    [
+      'PATCH /api/tasks/:id/assignments rejects too many assignees',
+      { userIds: Array.from({ length: 21 }, (_value, index) => `user-${index}`) },
+      'A task can have at most 20 assignees',
+    ],
+  ])('%s', async (_name, body, error) => {
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}/assignments`)
+      .set('Authorization', authHeader())
+      .send(body);
+
+    expectError(response, 400, error);
+  });
+
   it('DELETE /api/tasks/:id deletes a task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
     mocks.prisma.task.delete.mockResolvedValue(task);
@@ -806,6 +942,7 @@ describe('comment endpoints', () => {
 
   it('POST /api/comments creates a comment for an owned task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.taskAssignment.findFirst.mockResolvedValue({ id: 'assignment-1' });
     mocks.prisma.comment.create.mockResolvedValue(comment);
 
     const response = await request(app)
@@ -825,6 +962,18 @@ describe('comment endpoints', () => {
         userId: user.id,
       },
     }));
+  });
+
+  it('POST /api/comments rejects visible tasks when the user is not assigned', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
+    mocks.prisma.taskAssignment.findFirst.mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/comments')
+      .set('Authorization', authHeader())
+      .send({ taskId: task.id, content: 'Comment' });
+
+    expectError(response, 403, 'Only assigned users can comment on this task');
   });
 
   it.each([

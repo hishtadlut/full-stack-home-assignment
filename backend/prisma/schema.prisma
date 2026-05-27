@@ -48,6 +48,8 @@ model TaskAssignment {
 
   task Task @relation(fields: [taskId], references: [id])
   user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId, userId])
 }
 
 model Comment {
