@@ -213,9 +213,6 @@ export const deleteTask = async (req: AuthRequest, res: Response) => {
         return false;
       }
 
-      await tx.comment.deleteMany({ where: { taskId: id } });
-      await tx.taskAssignment.deleteMany({ where: { taskId: id } });
-      await tx.taskTag.deleteMany({ where: { taskId: id } });
       await tx.task.delete({ where: { id } });
       return true;
     });
