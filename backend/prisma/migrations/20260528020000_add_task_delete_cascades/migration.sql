@@ -1,0 +1,18 @@
+ALTER TABLE "Comment" DROP CONSTRAINT "Comment_taskId_fkey";
+ALTER TABLE "TaskAssignment" DROP CONSTRAINT "TaskAssignment_taskId_fkey";
+ALTER TABLE "TaskTag" DROP CONSTRAINT "TaskTag_taskId_fkey";
+
+ALTER TABLE "Comment"
+ADD CONSTRAINT "Comment_taskId_fkey"
+FOREIGN KEY ("taskId") REFERENCES "Task"("id")
+ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "TaskAssignment"
+ADD CONSTRAINT "TaskAssignment_taskId_fkey"
+FOREIGN KEY ("taskId") REFERENCES "Task"("id")
+ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE "TaskTag"
+ADD CONSTRAINT "TaskTag_taskId_fkey"
+FOREIGN KEY ("taskId") REFERENCES "Task"("id")
+ON DELETE CASCADE ON UPDATE CASCADE;

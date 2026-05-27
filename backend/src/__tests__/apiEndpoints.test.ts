@@ -931,9 +931,10 @@ describe('task endpoints', () => {
 
     expect(response.status).toBe(204);
     expect(response.text).toBe('');
-    expect(mocks.prisma.comment.deleteMany).toHaveBeenCalledWith({ where: { taskId: task.id } });
-    expect(mocks.prisma.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: task.id } });
-    expect(mocks.prisma.taskTag.deleteMany).toHaveBeenCalledWith({ where: { taskId: task.id } });
+    expect(mocks.prisma.task.delete).toHaveBeenCalledWith({ where: { id: task.id } });
+    expect(mocks.prisma.comment.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.taskAssignment.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.taskTag.deleteMany).not.toHaveBeenCalled();
   });
 
   it('DELETE /api/tasks/:id reports missing tasks', async () => {

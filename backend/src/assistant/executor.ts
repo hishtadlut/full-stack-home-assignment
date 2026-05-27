@@ -103,9 +103,6 @@ const executeOperation = async (
         throw new DraftExecutionError('Task not found');
       }
 
-      await tx.comment.deleteMany({ where: { taskId: operation.taskId } });
-      await tx.taskAssignment.deleteMany({ where: { taskId: operation.taskId } });
-      await tx.taskTag.deleteMany({ where: { taskId: operation.taskId } });
       await tx.task.delete({ where: { id: operation.taskId } });
 
       return {
@@ -284,7 +281,7 @@ const errorMessageFor = (error: unknown) => {
   }
 
   if (isForeignKeyConstraintError(error)) {
-    return 'Delete failed because related comments, assignments, or tags still exist';
+    return 'Delete failed because a related record still exists';
   }
 
   if (error instanceof Error) {
