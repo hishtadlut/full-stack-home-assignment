@@ -40,7 +40,7 @@ This is a Task Management application that allows users to:
 
 Before you begin, ensure you have the following installed:
 
-- Node.js (v18 or higher)
+- Node.js (v20 or higher)
 - npm or yarn
 - Git
 - Docker and Docker Compose (for PostgreSQL database)
