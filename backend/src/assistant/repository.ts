@@ -134,48 +134,64 @@ export const appendAssistantMessage = async (
   });
 };
 
-export const appendUserMessage = async (chatId: string, content: string) =>
-  prisma.$transaction((tx) => appendAssistantMessage(tx, chatId, ASSISTANT_MESSAGE_ROLE.User, content));
+export const appendAssistantConversationTurn = async (
+  chatId: string,
+  userMessage: string,
+  assistantMessage: string,
+  draft: AssistantDraftShape | null,
+) => {
+  await prisma.$transaction(async (tx) => {
+    await appendAssistantMessage(tx, chatId, ASSISTANT_MESSAGE_ROLE.User, userMessage);
+    await appendAssistantModelResponseInTransaction(tx, chatId, assistantMessage, draft);
+  });
+};
 
 export const appendAssistantModelResponse = async (
   chatId: string,
   message: string,
   draft: AssistantDraftShape | null,
 ) => {
-  await prisma.$transaction(async (tx) => {
-    const assistantMessage = await appendAssistantMessage(
-      tx,
-      chatId,
-      ASSISTANT_MESSAGE_ROLE.Assistant,
-      message,
-      {
-        model: ASSISTANT_MODEL,
-        hasDraft: Boolean(draft),
+  await prisma.$transaction((tx) => appendAssistantModelResponseInTransaction(tx, chatId, message, draft));
+};
+
+const appendAssistantModelResponseInTransaction = async (
+  tx: TransactionClient,
+  chatId: string,
+  message: string,
+  draft: AssistantDraftShape | null,
+) => {
+  const assistantMessage = await appendAssistantMessage(
+    tx,
+    chatId,
+    ASSISTANT_MESSAGE_ROLE.Assistant,
+    message,
+    {
+      model: ASSISTANT_MODEL,
+      hasDraft: Boolean(draft),
+    },
+  );
+
+  if (draft) {
+    await tx.assistantDraft.updateMany({
+      where: {
+        chatId,
+        status: ASSISTANT_DRAFT_STATUS.Pending,
       },
-    );
+      data: {
+        status: ASSISTANT_DRAFT_STATUS.Superseded,
+        decidedAt: new Date(),
+      },
+    });
 
-    if (draft) {
-      await tx.assistantDraft.updateMany({
-        where: {
-          chatId,
-          status: ASSISTANT_DRAFT_STATUS.Pending,
-        },
-        data: {
-          status: ASSISTANT_DRAFT_STATUS.Superseded,
-          decidedAt: new Date(),
-        },
-      });
-
-      await tx.assistantDraft.create({
-        data: {
-          chatId,
-          assistantMessageId: assistantMessage.id,
-          status: ASSISTANT_DRAFT_STATUS.Pending,
-          originalDraft: draft as unknown as Prisma.InputJsonValue,
-        },
-      });
-    }
-  });
+    await tx.assistantDraft.create({
+      data: {
+        chatId,
+        assistantMessageId: assistantMessage.id,
+        status: ASSISTANT_DRAFT_STATUS.Pending,
+        originalDraft: draft as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
 };
 
 export const markAssistantDraftDiscarded = async (draftId: string, chatId: string) => {
