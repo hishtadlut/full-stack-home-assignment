@@ -332,6 +332,47 @@ describe('executeApprovedDraft', () => {
     expect(mocks.tx.taskAssignment.create).not.toHaveBeenCalled();
   });
 
+  it('allows assistant comment deletion for comment authors or task owners', async () => {
+    mocks.tx.comment.findFirst.mockResolvedValue({ id: 'comment-1', taskId: 'task-1' });
+    mocks.tx.comment.delete.mockResolvedValue({ id: 'comment-1' });
+
+    await executeApprovedDraft(userId, {
+      schemaVersion: 1,
+      summary: 'Delete a comment',
+      operations: [
+        {
+          id: 'delete-comment',
+          type: 'delete_comment',
+          label: 'Delete comment',
+          commentId: 'comment-1',
+        },
+      ],
+    });
+
+    expect(mocks.tx.comment.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'comment-1',
+        OR: [
+          { userId },
+          {
+            task: {
+              userId,
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        taskId: true,
+      },
+    });
+    expect(mocks.tx.comment.delete).toHaveBeenCalledWith({
+      where: {
+        id: 'comment-1',
+      },
+    });
+  });
+
   it('rejects delete_comment when the comment is not owned by the user', async () => {
     mocks.tx.comment.findFirst.mockResolvedValue(null);
 

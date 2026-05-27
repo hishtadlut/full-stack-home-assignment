@@ -105,8 +105,25 @@ export const publishTaskChanged = (event: Omit<TaskChangedEvent, 'type' | 'occur
     ...event,
   } satisfies TaskChangedEvent);
 
+  void publishTaskChangedToAuthorizedClients(event.taskId, message).catch((error) => {
+    console.error('Error publishing task realtime event:', error);
+  });
+};
+
+const publishTaskChangedToAuthorizedClients = async (taskId: string, message: string) => {
   for (const client of clients) {
-    if (client.taskIds.has(event.taskId) && client.socket.readyState === WebSocket.OPEN) {
+    if (!client.taskIds.has(taskId) || client.socket.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+
+    const task = await findVisibleTaskIdForUser(prisma, client.userId, taskId);
+
+    if (!task) {
+      client.taskIds.delete(taskId);
+      continue;
+    }
+
+    if (client.socket.readyState === WebSocket.OPEN) {
       client.socket.send(message);
     }
   }

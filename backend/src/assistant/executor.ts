@@ -4,7 +4,7 @@ import {
   prisma,
   type TransactionClient,
 } from '../db/prisma';
-import { findCommentForTaskOwner, findTaskIdForUser } from '../db/taskQueries';
+import { findCommentForAuthorOrTaskOwner, findTaskIdForUser } from '../db/taskQueries';
 import { publishTaskChanged, type TaskChangedAction } from '../realtime/taskEvents';
 import type { AssistantDraftOperation, AssistantDraftShape, AssistantExecutionResult } from './types';
 
@@ -185,7 +185,7 @@ const executeOperation = async (
     }
 
     case 'delete_comment': {
-      const comment = await findCommentForTaskOwner(tx, userId, operation.commentId);
+      const comment = await findCommentForAuthorOrTaskOwner(tx, userId, operation.commentId);
 
       if (!comment) {
         throw new DraftExecutionError('Comment not found');

@@ -98,11 +98,12 @@ describe('task realtime events', () => {
     const unsubscribedViewer = await openSocket('user-4');
 
     subscribe(firstTaskViewer, 'task-1');
-    subscribe(secondTaskViewer, 'task-1');
-    subscribe(otherTaskViewer, 'task-2');
-
     await expectJson(firstTaskViewer, { type: 'subscribed', taskId: 'task-1' });
+
+    subscribe(secondTaskViewer, 'task-1');
     await expectJson(secondTaskViewer, { type: 'subscribed', taskId: 'task-1' });
+
+    subscribe(otherTaskViewer, 'task-2');
     await expectJson(otherTaskViewer, { type: 'subscribed', taskId: 'task-2' });
 
     await closeSocket(secondTaskViewer);
@@ -116,6 +117,27 @@ describe('task realtime events', () => {
     });
     await expectNoMessage(otherTaskViewer);
     await expectNoMessage(unsubscribedViewer);
+  });
+
+  it('drops subscribed clients that can no longer view the task before broadcasting', async () => {
+    await startTaskEventServer();
+    mocks.verifyAuthToken.mockReturnValue({ userId: 'user-1' });
+    mocks.findVisibleTaskIdForUser
+      .mockResolvedValueOnce({ id: 'task-1' })
+      .mockResolvedValueOnce(null);
+
+    const socket = await openSocket('valid-token');
+    subscribe(socket, 'task-1');
+    await expectJson(socket, { type: 'subscribed', taskId: 'task-1' });
+
+    const noMessage = expectNoMessage(socket);
+    publishTaskChanged({ taskId: 'task-1', action: 'assignments_updated', actorUserId: 'user-2' });
+
+    await waitFor(
+      () => mocks.findVisibleTaskIdForUser.mock.calls.length === 2,
+      'Timed out waiting for realtime visibility check',
+    );
+    await noMessage;
   });
 
   it('returns subscription errors for tasks the user cannot view', async () => {
