@@ -24,7 +24,7 @@ Scope: production-only deployment of the Task Manager full-stack app to Google C
 | Environment | Production only | This is the final project, not a staged multi-environment platform |
 | Region | `me-west1` Tel Aviv, Israel | Keeps compute and database close to the expected operator/user location |
 | Compute | Cloud Run for backend API and frontend SPA | Small, managed, easy to scale down operationally while keeping one warm instance |
-| Scaling | `min_instances = 1`, `max_instances = 2` by default | One hot instance avoids cold starts; the low cap allows a small burst without turning this into a high-scale system |
+| Scaling | `min_instances = 1`, `max_instances = 1` for the API | One hot API instance avoids cold starts and keeps in-process WebSocket subscriptions correct |
 | Frontend runtime | Nginx static container on Cloud Run | Vite is only the build tool; it is not used at runtime |
 | API base URL | Same-origin `/api` by default | No production `VITE_API_URL` is required when the load balancer routes `/api/*` to the backend |
 | Backend | One Express API Cloud Run service | The app already reads Cloud Run's `PORT` env var |
@@ -78,7 +78,7 @@ graph TD
     Armor --> LB
     Cert --> LB
     LB -->|/*| Web
-    LB -->|/api/* and /health| API
+    LB -->|/api/*, /health, and /ws/*| API
     AR --> Web
     AR --> API
     AR --> Migrate
@@ -94,6 +94,7 @@ graph TD
 |---|---|---|
 | `/api/*` | Backend Cloud Run service | Existing API routes already live under `/api/auth`, `/api/tasks`, `/api/comments`, and `/api/assistant` |
 | `/health` | Backend Cloud Run service | Health and uptime check endpoint |
+| `/ws/*` | Backend Cloud Run service | WebSocket task update stream |
 | `/assets/*` | Frontend Cloud Run service | Hashed Vite assets with long cache headers |
 | `/*` | Frontend Cloud Run service | Nginx falls back to `index.html` for React Router deep links |
 
@@ -174,16 +175,16 @@ Terraform creates:
 
 ### 5. GitHub Actions Deployment
 
-Recommended GitHub deployment flow:
+GitHub deployment flow:
 
-1. Run backend and frontend tests.
-2. Build backend and frontend images.
-3. Push both images to Artifact Registry.
-4. Run `terraform plan` with image digests.
-5. Manually approve production deploy.
-6. Run `terraform apply`.
-7. Execute the Cloud Run migration job with `--wait`.
-8. Smoke test `/health`, `/dashboard`, login, task creation, and assistant if configured.
+1. `.github/workflows/tests.yml` passes on a push to `main`.
+2. `.github/workflows/deploy-production.yml` authenticates to GCP with Workload Identity Federation as the Terraform-created GitHub deployer service account.
+3. Build backend and frontend images tagged with the short commit SHA.
+4. Push both images to Artifact Registry.
+5. Update the Terraform-managed Cloud Run migration job to the new backend image.
+6. Execute the migration job with `--wait`.
+7. Update the API and web Cloud Run services to the new images.
+8. Smoke test `/health` and `/dashboard`.
 
 ## After Apply Checklist
 
@@ -197,7 +198,7 @@ Recommended GitHub deployment flow:
 5. Register a user.
 6. Login.
 7. Create a task.
-8. Run the migration job once after every deploy that includes Prisma migrations.
+8. Confirm the GitHub deployment run completed the migration job successfully.
 9. Run `terraform plan -detailed-exitcode` and confirm no unexpected drift.
 
 ## Open Inputs

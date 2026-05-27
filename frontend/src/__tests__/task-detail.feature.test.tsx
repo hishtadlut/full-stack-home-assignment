@@ -42,10 +42,13 @@ const initialComment: Comment = {
   user: seededUser,
 };
 
+const legacyTaskId = 'cmpn5dqhc0001ub0k530fba9e';
+
 let actor: ReturnType<typeof userEvent.setup>;
 let commentPostBody: unknown;
 let assignmentPatchBody: unknown;
 let currentTask: Task;
+let usersRequestFails: boolean;
 let realtimeSockets: FakeWebSocket[];
 
 describe('Feature: task detail comment and error flows', () => {
@@ -54,6 +57,7 @@ describe('Feature: task detail comment and error flows', () => {
     commentPostBody = null;
     assignmentPatchBody = null;
     currentTask = task;
+    usersRequestFails = false;
     realtimeSockets = [];
     localStorage.setItem('token', 'auth-token');
     vi.stubGlobal('WebSocket', FakeWebSocket);
@@ -79,6 +83,33 @@ describe('Feature: task detail comment and error flows', () => {
       taskId: task.id,
       content: 'Ready for QA',
     });
+  });
+
+  it('loads a deep-linked assigned task even when the users lookup is unavailable', async () => {
+    usersRequestFails = true;
+    currentTask = {
+      ...task,
+      id: legacyTaskId,
+      title: 'New Task',
+      description: 'Description\nBOOM\n\nBOOM',
+      assignments: [
+        {
+          id: 'assignment-legacy-owner',
+          taskId: legacyTaskId,
+          userId: seededUser.id,
+          user: seededUser,
+        },
+      ],
+      comments: [],
+    };
+
+    renderAppAt(`/tasks/${legacyTaskId}`);
+
+    await screen.findByRole('heading', { name: 'New Task' });
+
+    expect(screen.getByText(/description/i)).toBeInTheDocument();
+    expect(screen.getByText(/boom/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /task not found/i })).not.toBeInTheDocument();
   });
 
   it('shows an inline error when task deletion fails', async () => {
@@ -150,11 +181,23 @@ describe('Feature: task detail comment and error flows', () => {
 
     renderAppAt('/tasks/task-1');
 
-    await screen.findByRole('heading', { name: task.title });
+    await screen.findByRole('heading', { name: /task not found/i });
 
-    expect(screen.getByText(/only assigned users can add comments/i)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: task.title })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^add comment$/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
+  });
+
+  it('hides a legacy owner task when the current user is not assigned', async () => {
+    currentTask = {
+      ...task,
+      assignments: [],
+    };
+
+    renderAppAt('/tasks/task-1');
+
+    await screen.findByRole('heading', { name: /task not found/i });
+
+    expect(screen.queryByRole('heading', { name: task.title })).not.toBeInTheDocument();
   });
 });
 
@@ -175,15 +218,19 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({ user: seededUser });
   }
 
-  if (method === 'GET' && url.endsWith('/api/tasks/task-1')) {
+  if (method === 'GET' && url.endsWith(`/api/tasks/${currentTask.id}`)) {
     return jsonResponse(currentTask);
   }
 
-  if (method === 'GET' && url.endsWith('/api/comments?taskId=task-1')) {
+  if (method === 'GET' && url.endsWith(`/api/comments?taskId=${currentTask.id}`)) {
     return jsonResponse([initialComment]);
   }
 
   if (method === 'GET' && url.endsWith('/api/users')) {
+    if (usersRequestFails) {
+      return jsonResponse({ error: 'Cannot GET /api/users' }, { status: 404 });
+    }
+
     return jsonResponse({ users: [seededUser, secondUser] });
   }
 
@@ -199,20 +246,20 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     }, { status: 201 });
   }
 
-  if (method === 'PATCH' && url.endsWith('/api/tasks/task-1/assignments')) {
+  if (method === 'PATCH' && url.endsWith(`/api/tasks/${currentTask.id}/assignments`)) {
     assignmentPatchBody = JSON.parse(String(init?.body));
     currentTask = {
       ...currentTask,
       assignments: [
         {
           id: 'assignment-1',
-          taskId: task.id,
+          taskId: currentTask.id,
           userId: seededUser.id,
           user: seededUser,
         },
         {
           id: 'assignment-2',
-          taskId: task.id,
+          taskId: currentTask.id,
           userId: secondUser.id,
           user: secondUser,
         },
@@ -222,7 +269,7 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse(currentTask);
   }
 
-  if (method === 'DELETE' && url.endsWith('/api/tasks/task-1')) {
+  if (method === 'DELETE' && url.endsWith(`/api/tasks/${currentTask.id}`)) {
     return jsonResponse({ error: 'Delete failed' }, { status: 500 });
   }
 

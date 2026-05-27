@@ -1,0 +1,129 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PROJECT_ID: task-managment-497618
+  REGION: me-west1
+  DOMAIN_NAME: task-management.hishtadlut.link
+  ARTIFACT_REPOSITORY: task-manager
+  API_SERVICE: task-manager-prod-api
+  WEB_SERVICE: task-manager-prod-web
+  MIGRATION_JOB: task-manager-prod-migrate
+  WORKLOAD_IDENTITY_PROVIDER: projects/433790978420/locations/global/workloadIdentityPools/task-manager-prod-github/providers/github-oidc
+  DEPLOYER_SERVICE_ACCOUNT: task-manager-gh-deploy@task-managment-497618.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    name: Deploy current main
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set deploy image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DEPLOY_SHA="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
+          SHORT_SHA="${DEPLOY_SHA::7}"
+          IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}"
+
+          echo "DEPLOY_SHA=${DEPLOY_SHA}" >> "${GITHUB_ENV}"
+          echo "SHORT_SHA=${SHORT_SHA}" >> "${GITHUB_ENV}"
+          echo "BACKEND_IMAGE=${IMAGE_BASE}/backend:${SHORT_SHA}" >> "${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE=${IMAGE_BASE}/frontend:${SHORT_SHA}" >> "${GITHUB_ENV}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Artifact Registry Docker auth
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build backend image
+        run: docker build -t "${BACKEND_IMAGE}" backend
+
+      - name: Build frontend image
+        run: docker build -t "${FRONTEND_IMAGE}" frontend
+
+      - name: Push images
+        run: |
+          docker push "${BACKEND_IMAGE}"
+          docker push "${FRONTEND_IMAGE}"
+
+      - name: Update migration job image
+        run: |
+          gcloud run jobs update "${MIGRATION_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${BACKEND_IMAGE}" \
+            --quiet
+
+      - name: Run Prisma migrations
+        run: |
+          gcloud run jobs execute "${MIGRATION_JOB}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --wait
+
+      - name: Update Cloud Run services
+        run: |
+          gcloud run services update "${API_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${BACKEND_IMAGE}" \
+            --quiet
+
+          gcloud run services update "${WEB_SERVICE}" \
+            --project "${PROJECT_ID}" \
+            --region "${REGION}" \
+            --image "${FRONTEND_IMAGE}" \
+            --quiet
+
+      - name: Smoke test production
+        run: |
+          curl --fail --retry 6 --retry-all-errors --retry-delay 5 "https://${DOMAIN_NAME}/health"
+          curl --fail --retry 6 --retry-all-errors --retry-delay 5 "https://${DOMAIN_NAME}/dashboard" > /dev/null
+
+      - name: Write deployment summary
+        run: |
+          {
+            echo "### Production deployment"
+            echo ""
+            echo "- Commit: \`${DEPLOY_SHA}\`"
+            echo "- Backend image: \`${BACKEND_IMAGE}\`"
+            echo "- Frontend image: \`${FRONTEND_IMAGE}\`"
+            echo "- Migration job: \`${MIGRATION_JOB}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

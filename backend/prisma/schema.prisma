@@ -46,10 +46,10 @@ model TaskAssignment {
   taskId String
   userId String
 
-  task Task @relation(fields: [taskId], references: [id])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 
-  @@index([taskId, userId])
+  @@unique([taskId, userId])
 }
 
 model Comment {
@@ -60,7 +60,7 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  task Task @relation(fields: [taskId], references: [id])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
 }
 
@@ -79,7 +79,7 @@ model TaskTag {
   taskId String
   tagId  String
 
-  task Task @relation(fields: [taskId], references: [id])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   tag  Tag  @relation(fields: [tagId], references: [id])
 }
 

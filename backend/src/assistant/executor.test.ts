@@ -186,8 +186,10 @@ describe('executeApprovedDraft', () => {
         id: 'comment-5',
       },
     });
-    expect(mocks.tx.taskAssignment.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
-    expect(mocks.tx.taskTag.deleteMany).toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
+    expect(mocks.tx.task.delete).toHaveBeenCalledWith({ where: { id: 'task-3' } });
+    expect(mocks.tx.comment.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.taskAssignment.deleteMany).not.toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
+    expect(mocks.tx.taskTag.deleteMany).not.toHaveBeenCalled();
     expect(mocks.publishTaskChanged).toHaveBeenCalledTimes(6);
     for (const event of [
       { taskId: 'updated-task', action: 'updated' },
@@ -430,7 +432,7 @@ describe('executeApprovedDraft', () => {
         ],
       }),
     ).rejects.toThrow(
-      new DraftExecutionError('Delete failed because related comments, assignments, or tags still exist'),
+      new DraftExecutionError('Delete failed because a related record still exists'),
     );
   });
 
