@@ -5,12 +5,15 @@ import { TaskDetailHeader } from '../components/task-detail/TaskDetailHeader';
 import { TaskDetailShell } from '../components/task-detail/TaskDetailShell';
 import { TaskEditPanel } from '../components/task-detail/TaskEditPanel';
 import { TaskNotFound } from '../components/task-detail/TaskNotFound';
+import { TaskRealtimeActivityFeed } from '../components/task-detail/TaskRealtimeActivityFeed';
 import { TaskSidePanels } from '../components/task-detail/TaskSidePanels';
 import { LoadingState } from '../components/ui/LoadingState';
 import { useAuth } from '../auth/useAuth';
 import { commentApi } from '../services/commentApi';
+import { ApiRequestError } from '../services/api';
 import { taskApi } from '../services/taskApi';
 import { userApi } from '../services/userApi';
+import { useTaskRealtime } from '../hooks/useTaskRealtime';
 import type { Comment, Task, TaskEditableFields, User } from '../types';
 
 export const TaskDetail = () => {
@@ -50,12 +53,15 @@ export const TaskDetail = () => {
   const canComment = Boolean(user && assignedUserIds.includes(user.id));
   const assignmentsChanged = !sameStringSet(assignedUserIds, selectedAssigneeIds);
 
-  const loadTask = useCallback(async () => {
+  const loadTask = useCallback(async (showLoading = true) => {
     if (!taskId) {
       return;
     }
 
-    setLoading(true);
+    if (showLoading) {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
@@ -70,15 +76,33 @@ export const TaskDetail = () => {
       setUsers(usersResponse);
       setSelectedAssigneeIds(taskResponse.assignments?.map((assignment) => assignment.userId) ?? []);
     } catch (loadError) {
+      if (loadError instanceof ApiRequestError && loadError.status === 404) {
+        setTask(null);
+        setComments([]);
+        setSelectedAssigneeIds([]);
+      }
+
       setError(messageForError(loadError));
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [taskId]);
 
   useEffect(() => {
     void loadTask();
   }, [loadTask]);
+
+  const refreshTaskSilently = useCallback(() => {
+    void loadTask(false);
+  }, [loadTask]);
+
+  const realtimeNotifications = useTaskRealtime({
+    taskId,
+    currentUserId: user?.id ?? null,
+    onExternalTaskChanged: refreshTaskSilently,
+  });
 
   const handleSave = async (fields: TaskEditableFields) => {
     if (!taskId) {
@@ -213,6 +237,8 @@ export const TaskDetail = () => {
             onToggleEdit={() => setEditing((current) => !current)}
             onDelete={handleDeleteTask}
           />
+
+          <TaskRealtimeActivityFeed notifications={realtimeNotifications} />
 
           {editing && editableTask && (
             <TaskEditPanel busy={saving} initialValues={editableTask} onSubmit={handleSave} />
