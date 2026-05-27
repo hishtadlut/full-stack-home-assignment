@@ -77,6 +77,7 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       update: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
 
@@ -91,14 +92,20 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('@prisma/client', () => ({
-  Prisma: {
-    PrismaClientKnownRequestError: mocks.PrismaClientKnownRequestError,
-  },
-  PrismaClient: vi.fn(function PrismaClient() {
-    return mocks.prisma;
-  }),
-}));
+vi.mock('@prisma/client', async () => {
+  const actual = await vi.importActual<typeof import('@prisma/client')>('@prisma/client');
+
+  return {
+    ...actual,
+    Prisma: {
+      ...actual.Prisma,
+      PrismaClientKnownRequestError: mocks.PrismaClientKnownRequestError,
+    },
+    PrismaClient: vi.fn(function PrismaClient() {
+      return mocks.prisma;
+    }),
+  };
+});
 
 vi.mock('../db/prisma', () => ({
   prisma: mocks.prisma,
@@ -143,6 +150,12 @@ const task = {
   userId: user.id,
   createdAt: now,
   updatedAt: now,
+};
+
+const secondTask = {
+  ...task,
+  id: 'task-2',
+  title: 'Write integration tests',
 };
 
 const comment = {
@@ -569,12 +582,12 @@ describe('user endpoints', () => {
 });
 
 describe('task endpoints', () => {
-  it('GET /api/tasks lists tasks for the authenticated user', async () => {
+  it('GET /api/tasks lists filtered tasks for the authenticated user', async () => {
     mocks.prisma.task.findMany.mockResolvedValue([task]);
 
     const response = await request(app)
       .get('/api/tasks')
-      .query({ search: ' write ', status: 'TODO', priority: 'MEDIUM' })
+      .query({ status: 'TODO', priority: 'MEDIUM' })
       .set('Authorization', authHeader());
 
     expect(response.status).toBe(200);
@@ -582,17 +595,57 @@ describe('task endpoints', () => {
     expect(response.body[0]).toMatchObject({ id: task.id, title: task.title });
     expect(mocks.prisma.task.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        AND: expect.arrayContaining([
-          expect.objectContaining({
-            OR: expect.arrayContaining([
-              expect.objectContaining({ userId: user.id }),
-            ]),
-          }),
-        ]),
+        assignments: {
+          some: {
+            userId: user.id,
+          },
+        },
         status: 'TODO',
         priority: 'MEDIUM',
       }),
     }));
+    expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/tasks uses PostgreSQL full-text search for searched task lists', async () => {
+    mocks.prisma.$queryRaw.mockResolvedValue([{ id: secondTask.id }, { id: task.id }]);
+    mocks.prisma.task.findMany.mockResolvedValue([task, secondTask]);
+
+    const response = await request(app)
+      .get('/api/tasks')
+      .query({ search: ' write tests ', status: 'TODO', priority: 'MEDIUM' })
+      .set('Authorization', authHeader());
+
+    expect(response.status).toBe(200);
+    expect(response.body.map((item: { id: string }) => item.id)).toEqual([secondTask.id, task.id]);
+    expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.task.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: {
+          in: [secondTask.id, task.id],
+        },
+        assignments: {
+          some: {
+            userId: user.id,
+          },
+        },
+        status: 'TODO',
+        priority: 'MEDIUM',
+      }),
+    }));
+  });
+
+  it('GET /api/tasks returns an empty list when full-text search finds no task ids', async () => {
+    mocks.prisma.$queryRaw.mockResolvedValue([]);
+
+    const response = await request(app)
+      .get('/api/tasks')
+      .query({ search: 'missing task' })
+      .set('Authorization', authHeader());
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+    expect(mocks.prisma.task.findMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -631,6 +684,16 @@ describe('task endpoints', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ id: task.id, title: task.title });
+    expect(mocks.prisma.task.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: task.id,
+        assignments: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
+    }));
   });
 
   it('GET /api/tasks/:id reports missing tasks', async () => {
@@ -892,7 +955,7 @@ describe('task endpoints', () => {
 });
 
 describe('comment endpoints', () => {
-  it('GET /api/comments lists comments for an owned task', async () => {
+  it('GET /api/comments lists comments for an assigned task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
     mocks.prisma.comment.findMany.mockResolvedValue([comment]);
 
@@ -940,7 +1003,7 @@ describe('comment endpoints', () => {
     expectError(response, 500, 'Failed to fetch comments');
   });
 
-  it('POST /api/comments creates a comment for an owned task', async () => {
+  it('POST /api/comments creates a comment for an assigned task', async () => {
     mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
     mocks.prisma.taskAssignment.findFirst.mockResolvedValue({ id: 'assignment-1' });
     mocks.prisma.comment.create.mockResolvedValue(comment);
@@ -964,16 +1027,15 @@ describe('comment endpoints', () => {
     }));
   });
 
-  it('POST /api/comments rejects visible tasks when the user is not assigned', async () => {
-    mocks.prisma.task.findFirst.mockResolvedValue({ id: task.id });
-    mocks.prisma.taskAssignment.findFirst.mockResolvedValue(null);
+  it('POST /api/comments reports unassigned tasks as missing', async () => {
+    mocks.prisma.task.findFirst.mockResolvedValue(null);
 
     const response = await request(app)
       .post('/api/comments')
       .set('Authorization', authHeader())
       .send({ taskId: task.id, content: 'Comment' });
 
-    expectError(response, 403, 'Only assigned users can comment on this task');
+    expectError(response, 404, 'Task not found');
   });
 
   it.each([

@@ -48,7 +48,7 @@ const tasks = [
     createdAt: '2026-05-01T09:00:00.000Z',
     updatedAt: '2026-05-02T09:30:00.000Z',
     user,
-    assignments: [],
+    assignments: [{ id: 'assignment-2', taskId: 'task-2', userId: user.id, user }],
   },
   {
     id: 'task-3',
@@ -60,7 +60,7 @@ const tasks = [
     createdAt: '2026-04-30T12:00:00.000Z',
     updatedAt: '2026-05-01T15:00:00.000Z',
     user,
-    assignments: [],
+    assignments: [{ id: 'assignment-3', taskId: 'task-3', userId: user.id, user }],
   },
 ];
 
@@ -233,7 +233,11 @@ async function fulfillMockApi(route) {
   }
 
   if (method === 'GET' && pathname === '/api/tasks/task-1') {
-    return fulfillJson(route, tasks[0]);
+    return fulfillJson(route, { ...tasks[0], comments });
+  }
+
+  if (method === 'GET' && pathname === '/api/users') {
+    return fulfillJson(route, { users: [user] });
   }
 
   if (method === 'GET' && pathname === '/api/comments' && url.searchParams.get('taskId') === 'task-1') {

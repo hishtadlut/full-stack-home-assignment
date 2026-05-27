@@ -231,16 +231,11 @@ const assertTaskVisibleToAssignedUser = async (
   const task = await tx.task.findFirst({
     where: {
       id: taskId,
-      OR: [
-        { userId },
-        {
-          assignments: {
-            some: {
-              userId,
-            },
-          },
+      assignments: {
+        some: {
+          userId,
         },
-      ],
+      },
     },
     select: {
       id: true,

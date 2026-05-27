@@ -7,9 +7,11 @@ import { TaskFiltersBar } from '../components/dashboard/TaskFiltersBar';
 import { TaskMetrics } from '../components/dashboard/TaskMetrics';
 import { TaskTable } from '../components/dashboard/TaskTable';
 import { useAuth } from '../auth/useAuth';
+import { findMatchingPresetId, useFilterPresets } from '../hooks/useFilterPresets';
 import { useTaskFilters } from '../hooks/useTaskFilters';
 import { useTasks } from '../hooks/useTasks';
 import { buildTaskStats } from '../utils/taskFormatting';
+import { isTaskAssignedToUser } from '../utils/taskVisibility';
 import type { TaskEditableFields, UpdateTaskInput } from '../types';
 
 export const Dashboard = () => {
@@ -26,10 +28,20 @@ export const Dashboard = () => {
     hasFilters,
     setFilterParam,
     clearFilters,
+    applyFilters,
   } = useTaskFilters();
+  const { presets, savePreset, deletePreset } = useFilterPresets(user?.id);
 
   const { tasks, loading, error, createTask, updateTask, deleteTask, refetch } = useTasks(filters);
-  const stats = useMemo(() => buildTaskStats(tasks), [tasks]);
+  const assignedTasks = useMemo(
+    () => tasks.filter((task) => isTaskAssignedToUser(task, user?.id)),
+    [tasks, user?.id],
+  );
+  const stats = useMemo(() => buildTaskStats(assignedTasks), [assignedTasks]);
+  const activePresetId = useMemo(
+    () => findMatchingPresetId(presets, filters),
+    [filters, presets],
+  );
 
   const handleCreateTask = async (taskData: TaskEditableFields) => {
     setCreateBusy(true);
@@ -65,6 +77,14 @@ export const Dashboard = () => {
     }
   };
 
+  const handleApplyPreset = (presetId: string) => {
+    const preset = presets.find((savedPreset) => savedPreset.id === presetId);
+
+    if (preset) {
+      applyFilters(preset.filters);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950">
       <DashboardHeader
@@ -82,10 +102,15 @@ export const Dashboard = () => {
           search={search}
           status={status}
           priority={priority}
-          resultCount={tasks.length}
+          presets={presets}
+          activePresetId={activePresetId}
+          resultCount={assignedTasks.length}
           hasFilters={hasFilters}
           onFilterChange={setFilterParam}
           onClearFilters={clearFilters}
+          onSavePreset={() => savePreset(filters)}
+          onApplyPreset={handleApplyPreset}
+          onDeletePreset={deletePreset}
         />
 
         {(error || actionError) && (
@@ -96,7 +121,7 @@ export const Dashboard = () => {
 
         {view === 'board' ? (
           <TaskBoard
-            tasks={tasks}
+            tasks={assignedTasks}
             loading={loading}
             currentUserId={user?.id ?? null}
             onUpdate={handleUpdateTask}
@@ -104,7 +129,7 @@ export const Dashboard = () => {
           />
         ) : (
           <TaskTable
-            tasks={tasks}
+            tasks={assignedTasks}
             loading={loading}
             currentUserId={user?.id ?? null}
             onUpdate={handleUpdateTask}

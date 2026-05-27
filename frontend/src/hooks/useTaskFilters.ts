@@ -42,6 +42,28 @@ export const useTaskFilters = () => {
     setSearchParams(view === 'board' ? {} : { view });
   };
 
+  const applyFilters = (nextFilters: TaskFilters) => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.delete('search');
+    nextParams.delete('status');
+    nextParams.delete('priority');
+
+    if (nextFilters.search?.trim()) {
+      nextParams.set('search', nextFilters.search.trim());
+    }
+
+    if (nextFilters.status) {
+      nextParams.set('status', nextFilters.status);
+    }
+
+    if (nextFilters.priority) {
+      nextParams.set('priority', nextFilters.priority);
+    }
+
+    setSearchParams(nextParams);
+  };
+
   return {
     search,
     status,
@@ -51,6 +73,7 @@ export const useTaskFilters = () => {
     hasFilters,
     setFilterParam,
     clearFilters,
+    applyFilters,
   };
 };
 
