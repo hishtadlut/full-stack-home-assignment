@@ -27,13 +27,21 @@ export const useTasks = (filters?: TaskFilters) => {
 
   const createTask = async (taskData: CreateTaskInput) => {
     const newTask = await taskApi.createTask(taskData);
-    setTasks((currentTasks) => [newTask, ...currentTasks]);
+    setTasks((currentTasks) => (
+      taskMatchesFilters(newTask, filters) ? [newTask, ...currentTasks] : currentTasks
+    ));
     return newTask;
   };
 
   const updateTask = async (id: string, taskData: UpdateTaskInput) => {
     const updatedTask = await taskApi.updateTask(id, taskData);
-    setTasks((currentTasks) => currentTasks.map((task) => (task.id === id ? updatedTask : task)));
+    setTasks((currentTasks) => {
+      if (!taskMatchesFilters(updatedTask, filters)) {
+        return currentTasks.filter((task) => task.id !== id);
+      }
+
+      return currentTasks.map((task) => (task.id === id ? updatedTask : task));
+    });
     return updatedTask;
   };
 
@@ -51,4 +59,29 @@ export const useTasks = (filters?: TaskFilters) => {
     deleteTask,
     refetch: fetchTasks,
   };
+};
+
+const taskMatchesFilters = (task: Task, filters?: TaskFilters) => {
+  if (!filters) {
+    return true;
+  }
+
+  if (filters.status && task.status !== filters.status) {
+    return false;
+  }
+
+  if (filters.priority && task.priority !== filters.priority) {
+    return false;
+  }
+
+  const search = filters.search?.trim().toLowerCase();
+
+  if (search) {
+    const title = task.title.toLowerCase();
+    const description = task.description?.toLowerCase() ?? '';
+
+    return title.includes(search) || description.includes(search);
+  }
+
+  return true;
 };

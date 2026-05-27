@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
@@ -6,7 +6,7 @@ import { AuthProvider } from '../auth/AuthProvider';
 import { jsonResponse, requestUrl, seededUser } from '../test/apiTestUtils';
 import type { Task } from '../types';
 
-const tasks: Task[] = [
+const baseTasks: Task[] = [
   {
     id: 'task-1',
     title: 'Implement user authentication',
@@ -21,11 +21,13 @@ const tasks: Task[] = [
 
 let actor: ReturnType<typeof userEvent.setup>;
 let taskRequestUrls: string[];
+let tasks: Task[];
 
 describe('Feature: dashboard filters are reflected in the URL and task requests', () => {
   beforeEach(() => {
     actor = userEvent.setup();
     taskRequestUrls = [];
+    tasks = [...baseTasks];
     localStorage.setItem('token', 'auth-token');
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
@@ -61,6 +63,43 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
       )).toBe(true);
     });
   });
+
+  it('removes a task from the current view when an update no longer matches active filters', async () => {
+    tasks = [
+      {
+        ...baseTasks[0],
+        title: 'Filtered task',
+        status: 'DONE',
+      },
+    ];
+
+    renderAppAt('/dashboard?status=DONE&view=table');
+
+    const taskRow = await screen.findByRole('row', { name: /filtered task/i });
+    await actor.selectOptions(within(taskRow).getByRole('combobox'), 'TODO');
+
+    await waitFor(() => {
+      expect(screen.queryByText('Filtered task')).not.toBeInTheDocument();
+      expect(screen.getByText('No tasks match this view')).toBeInTheDocument();
+    });
+  });
+
+  it('does not insert a newly created task into an active filter it does not match', async () => {
+    tasks = [];
+
+    renderAppAt('/dashboard?status=DONE');
+
+    await screen.findByRole('heading', { name: /^dashboard$/i });
+
+    await actor.click(screen.getByRole('button', { name: /new task/i }));
+    await actor.type(screen.getByLabelText(/^title$/i), 'Todo created under done filter');
+    await actor.click(screen.getByRole('button', { name: /create task/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Todo created under done filter')).not.toBeInTheDocument();
+      expect(screen.getByText('No tasks match this view')).toBeInTheDocument();
+    });
+  });
 });
 
 const renderAppAt = (path: string) => {
@@ -83,6 +122,35 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (method === 'GET' && url.includes('/api/tasks')) {
     taskRequestUrls.push(url);
     return jsonResponse(tasks);
+  }
+
+  if (method === 'POST' && url.endsWith('/api/tasks')) {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Partial<Task>;
+    const createdTask: Task = {
+      id: 'created-task',
+      title: body.title ?? 'Created task',
+      description: body.description ?? null,
+      status: body.status ?? 'TODO',
+      priority: body.priority ?? 'MEDIUM',
+      userId: seededUser.id,
+      createdAt: new Date('2026-05-03T10:00:00.000Z').toISOString(),
+      updatedAt: new Date('2026-05-03T10:00:00.000Z').toISOString(),
+    };
+
+    tasks = [createdTask, ...tasks];
+    return jsonResponse(createdTask);
+  }
+
+  if (method === 'PATCH' && url.includes('/api/tasks/task-1')) {
+    const body = JSON.parse(String(init?.body ?? '{}')) as Partial<Task>;
+    const updatedTask = {
+      ...tasks[0],
+      ...body,
+      updatedAt: new Date('2026-05-03T10:00:00.000Z').toISOString(),
+    };
+
+    tasks = tasks.map((task) => (task.id === updatedTask.id ? updatedTask : task));
+    return jsonResponse(updatedTask);
   }
 
   throw new Error(`Unexpected request: ${method} ${url}`);
