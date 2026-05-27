@@ -1,8 +1,21 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 interface ApiError {
-  error: string;
+  error?: string;
   message?: string;
+  [key: string]: unknown;
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(response: Response, body: unknown) {
+    super(messageForApiError(response, body));
+    this.name = 'ApiRequestError';
+    this.status = response.status;
+    this.body = body;
+  }
 }
 
 export const api = {
@@ -17,8 +30,7 @@ export const api = {
       });
       
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+        throw new ApiRequestError(response, await readErrorBody(response));
       }
       
       return response.json();
@@ -43,8 +55,7 @@ export const api = {
       });
       
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+        throw new ApiRequestError(response, await readErrorBody(response));
       }
       
       return response.json();
@@ -69,8 +80,7 @@ export const api = {
       });
       
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+        throw new ApiRequestError(response, await readErrorBody(response));
       }
       
       return response.json();
@@ -98,8 +108,7 @@ export const api = {
       }
       
       if (!response.ok) {
-        const error: ApiError = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
+        throw new ApiRequestError(response, await readErrorBody(response));
       }
       
       return response.json();
@@ -111,3 +120,17 @@ export const api = {
     }
   },
 };
+
+const readErrorBody = async (response: Response): Promise<unknown> =>
+  response.json().catch(() => null);
+
+const messageForApiError = (response: Response, body: unknown) => {
+  if (isApiError(body)) {
+    return body.error || body.message || `HTTP ${response.status}`;
+  }
+
+  return `HTTP ${response.status}`;
+};
+
+const isApiError = (value: unknown): value is ApiError =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -24,6 +24,7 @@ export const AssistantPanel = ({ onTasksChanged }: AssistantPanelProps) => {
     startFreshChat,
     sendMessage,
     handleDraftExecuted,
+    handleDraftFailed,
     handleDraftDiscarded,
   } = useAssistantChat({ onTasksChanged });
 
@@ -136,6 +137,7 @@ export const AssistantPanel = ({ onTasksChanged }: AssistantPanelProps) => {
               sending={sending}
               className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-4"
               onExecuted={handleDraftExecuted}
+              onFailed={handleDraftFailed}
               onDiscarded={handleDraftDiscarded}
             />
 

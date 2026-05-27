@@ -126,6 +126,11 @@ export const useAssistantChat = ({ onTasksChanged }: UseAssistantChatOptions) =>
     await onTasksChanged();
   }, [onTasksChanged, refreshChatList]);
 
+  const handleDraftFailed = useCallback(async (updatedChat: AssistantChat) => {
+    setChat(updatedChat);
+    await refreshChatList();
+  }, [refreshChatList]);
+
   const handleDraftDiscarded = useCallback(async (updatedChat: AssistantChat) => {
     setChat(updatedChat);
     await refreshChatList();
@@ -145,6 +150,7 @@ export const useAssistantChat = ({ onTasksChanged }: UseAssistantChatOptions) =>
     startFreshChat,
     sendMessage,
     handleDraftExecuted,
+    handleDraftFailed,
     handleDraftDiscarded,
   };
 };
