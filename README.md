@@ -289,6 +289,12 @@ The workflow has two required jobs:
 
 The `main` branch is protected in GitHub and requires both jobs to pass before changes can be merged.
 
+## Production Deployment
+
+The production GCP Terraform deployment is documented in [docs/infrastructure/README.md](./docs/infrastructure/README.md).
+
+That document covers Terraform state, required variables, plan/apply commands, managed resources, and the one external DNS step.
+
 ## Database
 
 The application uses PostgreSQL running in a Docker container. The database is automatically set up when you run `npm run db:setup`.
