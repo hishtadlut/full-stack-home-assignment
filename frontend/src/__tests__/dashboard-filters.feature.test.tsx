@@ -180,8 +180,9 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
 
     await screen.findByText('Implement user authentication');
     await waitFor(() => {
-      expect(realtimeSockets).toHaveLength(1);
-      expect(realtimeSockets[0].sentMessages).toContain(JSON.stringify({ type: 'subscribe', taskId: 'task-1' }));
+      expect(realtimeSockets.length).toBeGreaterThan(0);
+      expect(latestRealtimeSocket().sentMessages).toContain(JSON.stringify({ type: 'subscribe_task_list' }));
+      expect(latestRealtimeSocket().sentMessages).toContain(JSON.stringify({ type: 'subscribe', taskId: 'task-1' }));
     });
 
     tasks = [
@@ -192,7 +193,7 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
       },
     ];
 
-    realtimeSockets[0].receive({
+    latestRealtimeSocket().receive({
       type: 'task.changed',
       taskId: 'task-1',
       action: 'updated',
@@ -201,6 +202,35 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
     });
 
     expect(await screen.findByText('Implement websocket refresh')).toBeInTheDocument();
+  });
+
+  it('refreshes dashboard tasks when the user is newly assigned to a task', async () => {
+    tasks = [];
+
+    renderAppAt('/dashboard');
+
+    await screen.findByText('No tasks match this view');
+    await waitFor(() => {
+      expect(realtimeSockets.length).toBeGreaterThan(0);
+      expect(latestRealtimeSocket().sentMessages).toContain(JSON.stringify({ type: 'subscribe_task_list' }));
+    });
+
+    tasks = [
+      {
+        ...baseTasks[0],
+        id: 'newly-assigned-task',
+        title: 'Review newly assigned task',
+        updatedAt: new Date('2026-05-03T13:00:00.000Z').toISOString(),
+      },
+    ];
+
+    latestRealtimeSocket().receive({
+      type: 'task.list.changed',
+      actorUserId: 'user-2',
+      occurredAt: new Date('2026-05-03T13:00:00.000Z').toISOString(),
+    });
+
+    expect(await screen.findByText('Review newly assigned task')).toBeInTheDocument();
   });
 });
 
@@ -211,6 +241,16 @@ const renderAppAt = (path: string) => {
       <App />
     </AuthProvider>,
   );
+};
+
+const latestRealtimeSocket = () => {
+  const socket = realtimeSockets.at(-1);
+
+  if (!socket) {
+    throw new Error('Expected a realtime socket');
+  }
+
+  return socket;
 };
 
 const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {

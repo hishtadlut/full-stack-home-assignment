@@ -5,7 +5,7 @@ import {
   type TransactionClient,
 } from '../db/prisma';
 import { findCommentForAuthorOrTaskOwner, findTaskIdForUser } from '../db/taskQueries';
-import { publishTaskChanged, type TaskChangedAction } from '../realtime/taskEvents';
+import { publishTaskChanged, publishTaskListChanged, type TaskChangedAction } from '../realtime/taskEvents';
 import type { AssistantDraftOperation, AssistantDraftShape, AssistantExecutionResult } from './types';
 
 export class DraftExecutionError extends Error {
@@ -298,11 +298,32 @@ const publishExecutedTaskEvents = (
   for (const operation of operations) {
     if (!operation.ok || !operation.taskId) continue;
 
+    const taskListUserId = taskListUserIdByOperation(operation, userId);
+
+    if (taskListUserId) {
+      publishTaskListChanged({ userIds: [taskListUserId], actorUserId: userId });
+    }
+
     const action = taskActionByOperation[operation.type];
     if (!action) continue;
 
     publishTaskChanged({ taskId: operation.taskId, action, actorUserId: userId });
   }
+};
+
+const taskListUserIdByOperation = (
+  operation: AssistantExecutionResult['operations'][number],
+  userId: string,
+) => {
+  if (operation.type === 'create_task') {
+    return userId;
+  }
+
+  if ((operation.type === 'assign_task' || operation.type === 'unassign_task') && operation.entityId) {
+    return operation.entityId;
+  }
+
+  return null;
 };
 
 const taskActionByOperation = {

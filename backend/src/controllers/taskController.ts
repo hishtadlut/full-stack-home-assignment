@@ -9,7 +9,7 @@ import {
   taskListInclude,
 } from '../db/taskQueries';
 import { idSelect } from '../db/selects';
-import { publishTaskChanged } from '../realtime/taskEvents';
+import { publishTaskChanged, publishTaskListChanged } from '../realtime/taskEvents';
 
 export const getTasks = async (req: AuthRequest, res: Response) => {
   try {
@@ -99,6 +99,7 @@ export const createTask = async (req: AuthRequest, res: Response) => {
       include: taskListInclude,
     });
 
+    publishTaskListChanged({ userIds: [userId], actorUserId: userId });
     res.status(201).json(task);
   } catch (error) {
     console.error('Error creating task:', error);
@@ -165,6 +166,15 @@ export const updateTaskAssignments = async (req: AuthRequest, res: Response) => 
       }
     }
 
+    const previousAssignments = await prisma.taskAssignment.findMany({
+      where: {
+        taskId: id,
+      },
+      select: {
+        userId: true,
+      },
+    });
+
     const updatedTask = await prisma.$transaction(async (tx) => {
       await tx.taskAssignment.deleteMany({
         where: {
@@ -194,6 +204,10 @@ export const updateTaskAssignments = async (req: AuthRequest, res: Response) => 
     }
 
     publishTaskChanged({ taskId: updatedTask.id, action: 'assignments_updated', actorUserId: userId });
+    publishTaskListChanged({
+      userIds: uniqueUserIds([...previousAssignments.map((assignment) => assignment.userId), ...userIds]),
+      actorUserId: userId,
+    });
     res.json(updatedTask);
   } catch (error) {
     console.error('Error updating task assignments:', error);
@@ -206,22 +220,32 @@ export const deleteTask = async (req: AuthRequest, res: Response) => {
     const userId = req.userId!;
     const { id } = req.params;
 
-    const deleted = await prisma.$transaction(async (tx) => {
+    const deletedAssignmentUserIds = await prisma.$transaction(async (tx) => {
       const task = await findTaskIdForUser(tx, userId, id);
 
       if (!task) {
-        return false;
+        return null;
       }
 
+      const assignments = await tx.taskAssignment.findMany({
+        where: {
+          taskId: id,
+        },
+        select: {
+          userId: true,
+        },
+      });
+
       await tx.task.delete({ where: { id } });
-      return true;
+      return assignments.map((assignment) => assignment.userId);
     });
 
-    if (!deleted) {
+    if (!deletedAssignmentUserIds) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
     publishTaskChanged({ taskId: id, action: 'deleted', actorUserId: userId });
+    publishTaskListChanged({ userIds: deletedAssignmentUserIds, actorUserId: userId });
     res.status(204).send();
   } catch (error) {
     if (isRecordNotFoundError(error)) {
@@ -260,3 +284,5 @@ export const getTaskById = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch task' });
   }
 };
+
+const uniqueUserIds = (userIds: string[]) => [...new Set(userIds)];

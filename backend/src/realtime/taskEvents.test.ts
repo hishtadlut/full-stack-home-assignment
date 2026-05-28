@@ -3,7 +3,12 @@ import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachTaskEventServer, publishTaskChanged, type TaskChangedAction } from './taskEvents';
+import {
+  attachTaskEventServer,
+  publishTaskChanged,
+  publishTaskListChanged,
+  type TaskChangedAction,
+} from './taskEvents';
 
 const mocks = vi.hoisted(() => ({
   findVisibleTaskIdForUser: vi.fn(),
@@ -117,6 +122,30 @@ describe('task realtime events', () => {
     });
     await expectNoMessage(otherTaskViewer);
     await expectNoMessage(unsubscribedViewer);
+  });
+
+  it('broadcasts task list changes only to affected dashboard subscribers', async () => {
+    await startTaskEventServer();
+    mocks.verifyAuthToken.mockImplementation((token: string) => ({ userId: token }));
+
+    const affectedDashboard = await openSocket('user-1');
+    const unaffectedDashboard = await openSocket('user-2');
+    const unsubscribedAffectedUser = await openSocket('user-3');
+
+    subscribeTaskList(affectedDashboard);
+    await expectJson(affectedDashboard, { type: 'subscribed_task_list' });
+
+    subscribeTaskList(unaffectedDashboard);
+    await expectJson(unaffectedDashboard, { type: 'subscribed_task_list' });
+
+    publishTaskListChanged({ userIds: ['user-1', 'user-3'], actorUserId: 'user-4' });
+
+    await expectJson(affectedDashboard, {
+      type: 'task.list.changed',
+      actorUserId: 'user-4',
+    });
+    await expectNoMessage(unaffectedDashboard);
+    await expectNoMessage(unsubscribedAffectedUser);
   });
 
   it('drops subscribed clients that can no longer view the task before broadcasting', async () => {
@@ -279,6 +308,10 @@ const openSocket = async (token: string, options?: WebSocket.ClientOptions) => {
 
 const subscribe = (socket: WebSocket, taskId: string) => {
   socket.send(JSON.stringify({ type: 'subscribe', taskId }));
+};
+
+const subscribeTaskList = (socket: WebSocket) => {
+  socket.send(JSON.stringify({ type: 'subscribe_task_list' }));
 };
 
 const socketBaseUrl = () => {

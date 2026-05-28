@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     publishTaskChanged: vi.fn(),
+    publishTaskListChanged: vi.fn(),
     prisma: {
       $transaction: vi.fn(),
     },
@@ -48,6 +49,7 @@ vi.mock('../db/prisma', () => ({
 
 vi.mock('../realtime/taskEvents', () => ({
   publishTaskChanged: mocks.publishTaskChanged,
+  publishTaskListChanged: mocks.publishTaskListChanged,
 }));
 
 const userId = 'user-1';
@@ -191,6 +193,7 @@ describe('executeApprovedDraft', () => {
     expect(mocks.tx.taskAssignment.deleteMany).not.toHaveBeenCalledWith({ where: { taskId: 'task-3' } });
     expect(mocks.tx.taskTag.deleteMany).not.toHaveBeenCalled();
     expect(mocks.publishTaskChanged).toHaveBeenCalledTimes(6);
+    expect(mocks.publishTaskListChanged).toHaveBeenCalledTimes(3);
     for (const event of [
       { taskId: 'updated-task', action: 'updated' },
       { taskId: 'task-3', action: 'deleted' },
@@ -200,6 +203,9 @@ describe('executeApprovedDraft', () => {
       { taskId: 'task-5', action: 'comment_deleted' },
     ]) {
       expect(mocks.publishTaskChanged).toHaveBeenCalledWith({ ...event, actorUserId: userId });
+    }
+    for (const userIds of [[userId], ['user-2'], ['user-3']]) {
+      expect(mocks.publishTaskListChanged).toHaveBeenCalledWith({ userIds, actorUserId: userId });
     }
   });
 

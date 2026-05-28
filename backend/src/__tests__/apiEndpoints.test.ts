@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     comment: {
@@ -53,6 +54,7 @@ const mocks = vi.hoisted(() => {
     },
     taskAssignment: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       createMany: vi.fn(),
       deleteMany: vi.fn(),
@@ -253,6 +255,8 @@ beforeEach(() => {
   mocks.prisma.assistantDraft.findFirst.mockResolvedValue(null);
   mocks.prisma.assistantDraft.updateMany.mockResolvedValue({ count: 0 });
   mocks.prisma.assistantDraft.update.mockResolvedValue({ id: 'draft-1' });
+  mocks.prisma.taskAssignment.findMany.mockResolvedValue([]);
+  mocks.prisma.task.updateMany.mockResolvedValue({ count: 1 });
 });
 
 const resetMockTree = (value: unknown): void => {
