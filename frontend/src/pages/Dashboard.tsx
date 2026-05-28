@@ -47,6 +47,7 @@ export const Dashboard = () => {
 
   useTaskRealtime({
     taskIds: assignedTaskIds,
+    subscribeToTaskList: true,
     currentUserId: user?.id ?? null,
     onExternalTaskChanged: refetch,
   });

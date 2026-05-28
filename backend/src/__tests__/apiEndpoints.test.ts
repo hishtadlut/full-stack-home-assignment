@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     comment: {
@@ -53,6 +54,7 @@ const mocks = vi.hoisted(() => {
     },
     taskAssignment: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       createMany: vi.fn(),
       deleteMany: vi.fn(),
@@ -253,6 +255,8 @@ beforeEach(() => {
   mocks.prisma.assistantDraft.findFirst.mockResolvedValue(null);
   mocks.prisma.assistantDraft.updateMany.mockResolvedValue({ count: 0 });
   mocks.prisma.assistantDraft.update.mockResolvedValue({ id: 'draft-1' });
+  mocks.prisma.taskAssignment.findMany.mockResolvedValue([]);
+  mocks.prisma.task.updateMany.mockResolvedValue({ count: 1 });
 });
 
 const resetMockTree = (value: unknown): void => {
@@ -768,7 +772,7 @@ describe('task endpoints', () => {
   });
 
   it('PATCH /api/tasks/:id updates a task', async () => {
-    mocks.prisma.task.update.mockResolvedValue({
+    mocks.prisma.task.findUnique.mockResolvedValue({
       ...task,
       title: 'Updated',
       priority: 'HIGH',
@@ -781,10 +785,42 @@ describe('task endpoints', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ title: 'Updated', priority: 'HIGH' });
-    expect(mocks.prisma.task.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.prisma.task.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: task.id,
+        assignments: {
+          some: {
+            userId: user.id,
+          },
+        },
+      },
       data: {
         title: 'Updated',
         priority: 'HIGH',
+      },
+    }));
+  });
+
+  it('PATCH /api/tasks/:id lets assigned non-owners edit a task', async () => {
+    mocks.prisma.task.findUnique.mockResolvedValue({
+      ...task,
+      title: 'Assigned update',
+    });
+
+    const response = await request(app)
+      .patch(`/api/tasks/${task.id}`)
+      .set('Authorization', authHeader('assigned-user'))
+      .send({ title: 'Assigned update' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.prisma.task.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: task.id,
+        assignments: {
+          some: {
+            userId: 'assigned-user',
+          },
+        },
       },
     }));
   });
@@ -805,7 +841,7 @@ describe('task endpoints', () => {
   });
 
   it('PATCH /api/tasks/:id reports missing tasks', async () => {
-    mocks.prisma.task.update.mockRejectedValue(recordNotFound());
+    mocks.prisma.task.updateMany.mockResolvedValue({ count: 0 });
 
     const response = await request(app)
       .patch('/api/tasks/missing')
@@ -813,10 +849,11 @@ describe('task endpoints', () => {
       .send({ title: 'Updated' });
 
     expectError(response, 404, 'Task not found');
+    expect(mocks.prisma.task.findUnique).not.toHaveBeenCalled();
   });
 
   it('PATCH /api/tasks/:id reports unexpected persistence errors', async () => {
-    mocks.prisma.task.update.mockRejectedValue(new Error('database down'));
+    mocks.prisma.task.updateMany.mockRejectedValue(new Error('database down'));
 
     const response = await request(app)
       .patch(`/api/tasks/${task.id}`)

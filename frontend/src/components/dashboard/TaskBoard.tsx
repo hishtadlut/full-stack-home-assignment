@@ -6,6 +6,8 @@ import { EmptyState } from '../ui/EmptyState';
 import { LoadingState } from '../ui/LoadingState';
 import { PriorityBadge } from './PriorityBadge';
 import { formatEnumLabel } from '../../utils/taskFormatting';
+import { isTaskAssignedToUser } from '../../utils/taskVisibility';
+import type { DragEvent } from 'react';
 
 interface TaskSurfaceProps {
   tasks: Task[];
@@ -16,6 +18,14 @@ interface TaskSurfaceProps {
 }
 
 export const TaskBoard = ({ tasks, loading, currentUserId, onUpdate, onDelete }: TaskSurfaceProps) => {
+  const handleDrop = (event: DragEvent<HTMLDivElement>, status: Task['status']) => {
+    const task = tasks.find((item) => item.id === event.dataTransfer.getData('text/plain'));
+
+    if (task && task.status !== status && isTaskAssignedToUser(task, currentUserId)) {
+      void onUpdate(task.id, { status });
+    }
+  };
+
   if (loading) {
     return <LoadingState label="Loading board..." />;
   }
@@ -37,7 +47,11 @@ export const TaskBoard = ({ tasks, loading, currentUserId, onUpdate, onDelete }:
                 {columnTasks.length}
               </span>
             </div>
-            <div className="grid gap-3 p-3">
+            <div
+              className="grid min-h-64 gap-3 p-3"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => handleDrop(event, status)}
+            >
               {columnTasks.length === 0 ? (
                 <p className="rounded border border-dashed border-zinc-300 px-3 py-6 text-center text-sm text-zinc-500">
                   No tasks here.
@@ -67,10 +81,20 @@ const TaskCard = ({
   onUpdate,
   onDelete,
 }: { task: Task } & Pick<TaskSurfaceProps, 'currentUserId' | 'onUpdate' | 'onDelete'>) => {
-  const canManageTask = task.userId === currentUserId;
+  const canEditTask = isTaskAssignedToUser(task, currentUserId);
+  const canDeleteTask = task.userId === currentUserId;
 
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md">
+    <article
+      draggable={canEditTask}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', task.id);
+      }}
+      className={`rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-cyan-200 hover:shadow-md ${
+        canEditTask ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <Link to={`/tasks/${task.id}`} className="block truncate text-base font-bold text-zinc-950 hover:text-cyan-700">
@@ -87,7 +111,7 @@ const TaskCard = ({
             key={status}
             type="button"
             onClick={() => onUpdate(task.id, { status })}
-            disabled={!canManageTask || task.status === status}
+            disabled={!canEditTask || task.status === status}
             className={`rounded border px-2 py-1 text-xs font-semibold ${
               task.status === status
                 ? 'border-zinc-950 bg-zinc-950 text-white'
@@ -103,7 +127,7 @@ const TaskCard = ({
         <Link to={`/tasks/${task.id}`} className="text-sm font-semibold text-cyan-700 hover:text-cyan-900">
           Open details
         </Link>
-        {canManageTask && (
+        {canDeleteTask && (
           <button
             type="button"
             onClick={() => onDelete(task.id)}

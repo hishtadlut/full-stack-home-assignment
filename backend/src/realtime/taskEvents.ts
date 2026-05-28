@@ -19,9 +19,16 @@ export interface TaskChangedEvent {
   occurredAt: string;
 }
 
+export interface TaskListChangedEvent {
+  type: 'task.list.changed';
+  actorUserId: string;
+  occurredAt: string;
+}
+
 interface TaskClient {
   userId: string;
   taskIds: Set<string>;
+  taskListSubscribed: boolean;
   socket: WebSocket;
   isAlive: boolean;
 }
@@ -73,6 +80,7 @@ export const attachTaskEventServer = (
       userId,
       socket,
       taskIds: new Set(),
+      taskListSubscribed: false,
       isAlive: true,
     };
 
@@ -108,6 +116,33 @@ export const publishTaskChanged = (event: Omit<TaskChangedEvent, 'type' | 'occur
   void publishTaskChangedToAuthorizedClients(event.taskId, message).catch((error) => {
     console.error('Error publishing task realtime event:', error);
   });
+};
+
+export const publishTaskListChanged = ({
+  userIds,
+  actorUserId,
+}: Omit<TaskListChangedEvent, 'type' | 'occurredAt'> & { userIds: string[] }) => {
+  const recipientUserIds = new Set(userIds.filter((userId) => userId.trim().length > 0));
+
+  if (recipientUserIds.size === 0) {
+    return;
+  }
+
+  const message = JSON.stringify({
+    type: 'task.list.changed',
+    actorUserId,
+    occurredAt: new Date().toISOString(),
+  } satisfies TaskListChangedEvent);
+
+  for (const client of clients) {
+    if (
+      client.taskListSubscribed &&
+      recipientUserIds.has(client.userId) &&
+      client.socket.readyState === WebSocket.OPEN
+    ) {
+      client.socket.send(message);
+    }
+  }
 };
 
 const publishTaskChangedToAuthorizedClients = async (taskId: string, message: string) => {
@@ -151,6 +186,17 @@ const handleClientMessage = async (client: TaskClient, rawMessage: string) => {
     return;
   }
 
+  if (message.type === 'subscribe_task_list') {
+    client.taskListSubscribed = true;
+    sendJson(client.socket, { type: 'subscribed_task_list' });
+    return;
+  }
+
+  if (message.type === 'unsubscribe_task_list') {
+    client.taskListSubscribed = false;
+    return;
+  }
+
   if (message.type === 'unsubscribe') {
     client.taskIds.delete(message.taskId);
     return;
@@ -173,11 +219,19 @@ const handleClientMessage = async (client: TaskClient, rawMessage: string) => {
 
 type ClientMessage =
   | { type: 'subscribe'; taskId: string }
-  | { type: 'unsubscribe'; taskId: string };
+  | { type: 'unsubscribe'; taskId: string }
+  | { type: 'subscribe_task_list' }
+  | { type: 'unsubscribe_task_list' };
 
 const parseClientMessage = (rawMessage: string): ClientMessage | null => {
   try {
-    const message = JSON.parse(rawMessage) as Partial<ClientMessage>;
+    const message = JSON.parse(rawMessage) as { type?: unknown; taskId?: unknown };
+
+    if (message.type === 'subscribe_task_list' || message.type === 'unsubscribe_task_list') {
+      return {
+        type: message.type,
+      };
+    }
 
     if (
       (message.type !== 'subscribe' && message.type !== 'unsubscribe') ||

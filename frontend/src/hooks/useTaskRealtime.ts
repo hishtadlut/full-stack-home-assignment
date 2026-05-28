@@ -18,6 +18,12 @@ interface TaskChangedEvent {
   occurredAt: string;
 }
 
+interface TaskListChangedEvent {
+  type: 'task.list.changed';
+  actorUserId: string;
+  occurredAt: string;
+}
+
 export interface TaskRealtimeNotification {
   id: string;
   message: string;
@@ -27,6 +33,7 @@ export interface TaskRealtimeNotification {
 interface UseTaskRealtimeOptions {
   taskId?: string;
   taskIds?: string[];
+  subscribeToTaskList?: boolean;
   currentUserId: string | null;
   onExternalTaskChanged: () => void;
 }
@@ -38,13 +45,14 @@ const MAX_NOTIFICATIONS = 5;
 export const useTaskRealtime = ({
   taskId,
   taskIds,
+  subscribeToTaskList = false,
   currentUserId,
   onExternalTaskChanged,
 }: UseTaskRealtimeOptions) => {
   const [notifications, setNotifications] = useState<TaskRealtimeNotification[]>([]);
   const optionsRef = useRef({ currentUserId, onExternalTaskChanged });
   const subscribedTaskIds = uniqueTaskIds(taskIds ?? (taskId ? [taskId] : []));
-  const subscriptionKey = subscribedTaskIds.join('|');
+  const subscriptionKey = `${subscribeToTaskList ? 'task-list' : 'tasks'}:${subscribedTaskIds.join('|')}`;
 
   useEffect(() => {
     optionsRef.current = { currentUserId, onExternalTaskChanged };
@@ -57,7 +65,11 @@ export const useTaskRealtime = ({
   useEffect(() => {
     const token = localStorage.getItem('token');
 
-    if (subscribedTaskIds.length === 0 || !token || typeof window.WebSocket === 'undefined') {
+    if (
+      (!subscribeToTaskList && subscribedTaskIds.length === 0) ||
+      !token ||
+      typeof window.WebSocket === 'undefined'
+    ) {
       return undefined;
     }
 
@@ -74,12 +86,21 @@ export const useTaskRealtime = ({
           return;
         }
 
+        if (subscribeToTaskList) {
+          socket?.send(JSON.stringify({ type: 'subscribe_task_list' }));
+        }
+
         subscribedTaskIds.forEach((subscribedTaskId) => {
           socket?.send(JSON.stringify({ type: 'subscribe', taskId: subscribedTaskId }));
         });
       });
 
       socket.addEventListener('message', (event) => {
+        if (parseTaskListChangedEvent(event.data)) {
+          optionsRef.current.onExternalTaskChanged();
+          return;
+        }
+
         const message = parseTaskChangedEvent(event.data, subscribedTaskIdSet);
 
         if (!message) {
@@ -111,6 +132,10 @@ export const useTaskRealtime = ({
       }
 
       if (socket?.readyState === window.WebSocket.OPEN) {
+        if (subscribeToTaskList) {
+          socket.send(JSON.stringify({ type: 'unsubscribe_task_list' }));
+        }
+
         subscribedTaskIds.forEach((subscribedTaskId) => {
           socket?.send(JSON.stringify({ type: 'unsubscribe', taskId: subscribedTaskId }));
         });
@@ -131,6 +156,24 @@ const taskRealtimeUrl = (token: string) => {
   url.pathname = `${basePath}/ws/tasks`;
   url.searchParams.set('token', token);
   return url.toString();
+};
+
+const parseTaskListChangedEvent = (data: unknown): TaskListChangedEvent | null => {
+  if (typeof data !== 'string') {
+    return null;
+  }
+
+  try {
+    const message = JSON.parse(data) as Partial<TaskListChangedEvent>;
+
+    return message.type === 'task.list.changed' &&
+      typeof message.actorUserId === 'string' &&
+      typeof message.occurredAt === 'string'
+      ? (message as TaskListChangedEvent)
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 const parseTaskChangedEvent = (data: unknown, taskIds: Set<string>): TaskChangedEvent | null => {
