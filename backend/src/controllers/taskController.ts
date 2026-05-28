@@ -113,10 +113,14 @@ export const updateTask = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { title, description, status, priority } = req.body;
 
-    const task = await prisma.task.update({
+    const updated = await prisma.task.updateMany({
       where: {
         id,
-        userId,
+        assignments: {
+          some: {
+            userId,
+          },
+        },
       },
       data: {
         ...(title && { title }),
@@ -124,8 +128,22 @@ export const updateTask = async (req: AuthRequest, res: Response) => {
         ...(status && { status }),
         ...(priority && { priority }),
       },
+    });
+
+    if (updated.count === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const task = await prisma.task.findUnique({
+      where: {
+        id,
+      },
       include: taskListInclude,
     });
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
 
     publishTaskChanged({ taskId: task.id, action: 'updated', actorUserId: userId });
     res.json(task);

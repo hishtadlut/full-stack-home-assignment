@@ -51,6 +51,7 @@ export const TaskDetail = () => {
   );
 
   const canManageAssignments = Boolean(task && user && task.userId === user.id);
+  const canEditTask = Boolean(task && isTaskAssignedToUser(task, user?.id));
   const canComment = Boolean(user && assignedUserIds.includes(user.id));
   const assignmentsChanged = !sameStringSet(assignedUserIds, selectedAssigneeIds);
 
@@ -244,7 +245,8 @@ export const TaskDetail = () => {
             task={task}
             editing={editing}
             saving={saving}
-            canManageTask={canManageAssignments}
+            canEditTask={canEditTask}
+            canDeleteTask={canManageAssignments}
             error={error}
             onToggleEdit={() => setEditing((current) => !current)}
             onDelete={handleDeleteTask}

@@ -6,6 +6,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { LoadingState } from '../ui/LoadingState';
 import { PriorityBadge } from './PriorityBadge';
 import { formatEnumLabel, formatShortDateTime } from '../../utils/taskFormatting';
+import { isTaskAssignedToUser } from '../../utils/taskVisibility';
 
 interface TaskSurfaceProps {
   tasks: Task[];
@@ -45,7 +46,8 @@ export const TaskTable = ({ tasks, loading, currentUserId, onUpdate, onDelete }:
           </thead>
           <tbody className="divide-y divide-zinc-100 bg-white">
             {tasks.map((task) => {
-              const canManageTask = task.userId === currentUserId;
+              const canEditTask = isTaskAssignedToUser(task, currentUserId);
+              const canDeleteTask = task.userId === currentUserId;
 
               return (
                 <tr key={task.id} className="hover:bg-zinc-50">
@@ -58,7 +60,7 @@ export const TaskTable = ({ tasks, loading, currentUserId, onUpdate, onDelete }:
                   <td className="px-4 py-4">
                     <select
                       value={task.status}
-                      disabled={!canManageTask}
+                      disabled={!canEditTask}
                       onChange={(event) => onUpdate(task.id, { status: event.target.value as TaskStatus })}
                       className="rounded border border-zinc-300 px-2 py-1 text-sm focus:border-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:bg-zinc-100 disabled:text-zinc-500"
                     >
@@ -79,7 +81,7 @@ export const TaskTable = ({ tasks, loading, currentUserId, onUpdate, onDelete }:
                       >
                         Open
                       </Link>
-                      {canManageTask && (
+                      {canDeleteTask && (
                         <button
                           type="button"
                           onClick={() => onDelete(task.id)}

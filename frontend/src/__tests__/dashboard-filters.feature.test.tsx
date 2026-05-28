@@ -158,6 +158,26 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
     });
   });
 
+  it('lets assigned non-owners edit task status from the dashboard', async () => {
+    tasks = [
+      {
+        ...baseTasks[0],
+        userId: 'task-owner-2',
+      },
+    ];
+
+    renderAppAt('/dashboard?view=table');
+
+    const taskRow = await screen.findByRole('row', { name: /implement user authentication/i });
+    expect(within(taskRow).queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument();
+
+    await actor.selectOptions(within(taskRow).getByRole('combobox'), 'TODO');
+
+    await waitFor(() => {
+      expect(tasks[0].status).toBe('TODO');
+    });
+  });
+
   it('does not insert a newly created task into an active filter it does not match', async () => {
     tasks = [];
 
