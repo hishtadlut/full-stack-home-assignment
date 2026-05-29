@@ -16,5 +16,9 @@ frontend_image = "me-west1-docker.pkg.dev/task-managment-497618/task-manager/fro
 # The production domain is included automatically.
 # additional_cors_origins = ["https://admin.example.com"]
 
+# Optional Redis sizing for refresh-token family state.
+# redis_memory_size_gb = 1
+# redis_version        = "REDIS_7_0"
+
 # Optional alert target.
 # alert_email = "you@example.com"

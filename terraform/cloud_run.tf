@@ -59,6 +59,11 @@ resource "google_cloud_run_v2_service" "api" {
         value = join(",", local.cors_origins)
       }
 
+      env {
+        name  = "REDIS_URL"
+        value = "redis://${google_redis_instance.refresh_tokens.host}:${google_redis_instance.refresh_tokens.port}"
+      }
+
       dynamic "env" {
         for_each = local.api_secret_env
 
@@ -83,6 +88,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_project_service.required["run.googleapis.com"],
+    google_redis_instance.refresh_tokens,
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_version.jwt_secret,
   ]

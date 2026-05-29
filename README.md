@@ -32,6 +32,7 @@ This is a Task Management application that allows users to:
 - TypeScript
 - Prisma ORM
 - PostgreSQL (via Docker)
+- Redis refresh-token session state
 - JWT Authentication
 - bcrypt
 - Google GenAI SDK for the assistant
@@ -67,6 +68,7 @@ cp .env.example .env
 
 # Update .env with your configuration. JWT_SECRET is required in production.
 # DATABASE_URL="postgresql://taskmanager:taskmanager123@localhost:5432/taskmanager?schema=public"
+# REDIS_URL="redis://localhost:6379"
 # JWT_SECRET="<generate-a-long-random-secret>"
 # GEMINI_API_KEY="<your-gemini-api-key>"
 # NODE_ENV=development
@@ -75,11 +77,11 @@ cp .env.example .env
 # Set NODE_ENV=production in deployed environments so unsafe JWT secrets fail startup.
 # GEMINI_API_KEY is required for assistant chat and live assistant tests.
 
-# Start PostgreSQL database with Docker and setup database (migrate + seed)
+# Start PostgreSQL and Redis with Docker and setup database (migrate + seed)
 npm run db:setup
 
 # Or manually:
-# Start PostgreSQL Docker container
+# Start PostgreSQL and Redis Docker containers
 # npm run db:docker:up
 
 # Generate Prisma client
@@ -152,6 +154,9 @@ full-stack-home-assignment/
 
 - `POST /api/auth/register` - Register a new user
 - `POST /api/auth/login` - Login user
+- `POST /api/auth/refresh` - Rotate the HTTP-only refresh-token cookie and return a new access token
+- `DELETE /api/auth/refresh` - Revoke the current refresh-token family and clear the cookie
+- `POST /api/auth/logout-all` - Revoke all refresh-token families for the authenticated user
 - `GET /api/auth/me` - Get the authenticated user from the current token
 
 ### Tasks

@@ -59,10 +59,25 @@ const getJwtSecret = (): string => {
   return createDevelopmentJwtSecret();
 };
 
+const getRedisUrl = (): string | undefined => {
+  const redisUrl = process.env.REDIS_URL?.trim() ?? '';
+
+  if (redisUrl) {
+    return redisUrl;
+  }
+
+  if (isProduction) {
+    throw new Error('REDIS_URL is required');
+  }
+
+  return 'redis://localhost:6379';
+};
+
 export const env = {
   corsOrigins: parseCorsOrigins(),
   isProduction,
   jwtSecret: getJwtSecret(),
   nodeEnv,
   port: process.env.PORT || 3000,
+  redisUrl: getRedisUrl(),
 } as const;
