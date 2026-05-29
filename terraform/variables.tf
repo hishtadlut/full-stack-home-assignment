@@ -180,6 +180,18 @@ variable "cloud_sql_backup_start_time" {
   default     = "02:00"
 }
 
+variable "redis_memory_size_gb" {
+  description = "Memorystore Redis memory size in GB for refresh-token family state."
+  type        = number
+  default     = 1
+}
+
+variable "redis_version" {
+  description = "Memorystore Redis version for refresh-token family state."
+  type        = string
+  default     = "REDIS_7_0"
+}
+
 variable "gemini_api_key" {
   description = "Optional Gemini API key. If null, the assistant routes remain deployed but provider calls fail until a secret version is added."
   type        = string

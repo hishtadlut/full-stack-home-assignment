@@ -5,16 +5,17 @@ locals {
     managed_by  = "terraform"
   })
 
-  network_name       = "${var.name_prefix}-vpc"
-  subnet_name        = "${var.name_prefix}-serverless"
-  api_service_name   = "${var.name_prefix}-api"
-  web_service_name   = "${var.name_prefix}-web"
-  migrate_job_name   = "${var.name_prefix}-migrate"
-  sql_instance_name  = "${var.name_prefix}-postgres"
-  runtime_sa_id      = "${var.name_prefix}-run"
-  github_pool_id     = "${var.name_prefix}-github"
-  github_provider_id = "github-oidc"
-  github_sa_id       = "task-manager-gh-deploy"
+  network_name        = "${var.name_prefix}-vpc"
+  subnet_name         = "${var.name_prefix}-serverless"
+  api_service_name    = "${var.name_prefix}-api"
+  web_service_name    = "${var.name_prefix}-web"
+  migrate_job_name    = "${var.name_prefix}-migrate"
+  sql_instance_name   = "${var.name_prefix}-postgres"
+  redis_instance_name = "${var.name_prefix}-refresh-tokens"
+  runtime_sa_id       = "${var.name_prefix}-run"
+  github_pool_id      = "${var.name_prefix}-github"
+  github_provider_id  = "github-oidc"
+  github_sa_id        = "task-manager-gh-deploy"
 
   secret_ids = toset([
     "DATABASE_URL",
