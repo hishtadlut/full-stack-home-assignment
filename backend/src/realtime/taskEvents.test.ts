@@ -77,6 +77,24 @@ describe('task realtime events', () => {
     expect(mocks.verifyAuthToken).not.toHaveBeenCalled();
   });
 
+  it('authenticates with the websocket subprotocol and ignores URL query tokens', async () => {
+    await startTaskEventServer();
+    mocks.verifyAuthToken.mockImplementation((token: string) => {
+      if (token !== 'protocol-token') {
+        throw new Error('unexpected token source');
+      }
+
+      return { userId: 'user-1' };
+    });
+
+    const socket = createSocketWithProtocolAndQueryToken('protocol-token', 'query-token');
+    await withTimeout(once(socket, 'open'), 'Timed out opening WebSocket');
+    subscribeTaskList(socket);
+
+    await expectJson(socket, { type: 'subscribed_task_list' });
+    expect(mocks.verifyAuthToken).toHaveBeenCalledWith('protocol-token');
+  });
+
   it.each(taskActions)('subscribes visible task viewers and broadcasts %s events', async (action) => {
     await startTaskEventServer();
     mocks.verifyAuthToken.mockReturnValue({ userId: 'user-1' });
@@ -312,6 +330,15 @@ const createSocketWithQueryToken = (token: string) => {
   url.searchParams.set('token', token);
 
   const socket = new WebSocket(url.toString(), ['task-events']);
+  sockets.push(socket);
+  return socket;
+};
+
+const createSocketWithProtocolAndQueryToken = (protocolToken: string, queryToken: string) => {
+  const url = new URL(socketBaseUrl());
+  url.searchParams.set('token', queryToken);
+
+  const socket = new WebSocket(url.toString(), ['task-events', `auth.${protocolToken}`]);
   sockets.push(socket);
   return socket;
 };
