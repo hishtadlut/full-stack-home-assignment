@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import { Bot, Columns3, LayoutDashboard, LogOut, Plus, Table2 } from 'lucide-react';
+import { AlertTriangle, Bot, Columns3, LayoutDashboard, LogOut, Plus, Table2 } from 'lucide-react';
 import { buttonStyles } from '../ui/buttonStyles';
 import type { User } from '../../types';
+import type { SecurityWarning } from '../../auth/types';
 import type { DashboardView } from '../../hooks/useTaskFilters';
 
 const dashboardViews: Array<{ id: DashboardView; label: string; icon: typeof Columns3 }> = [
@@ -14,7 +15,8 @@ interface DashboardHeaderProps {
   view: DashboardView;
   onViewChange: (view: DashboardView) => void;
   onNewTask: () => void;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
+  securityWarnings: SecurityWarning[];
 }
 
 export const DashboardHeader = ({
@@ -23,9 +25,24 @@ export const DashboardHeader = ({
   onViewChange,
   onNewTask,
   onLogout,
+  securityWarnings,
 }: DashboardHeaderProps) => (
   <header className="border-b border-zinc-200 bg-white">
     <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+      {securityWarnings.map((warning) => (
+        <div
+          key={`${warning.eventType}-${warning.time}`}
+          role="alert"
+          className="flex items-start gap-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <p>
+            A previous refresh token was reused from {warning.ip || 'an unknown IP'}
+            {warning.approxLocation ? ` near ${warning.approxLocation}` : ''}. Your other sessions were revoked.
+          </p>
+        </div>
+      ))}
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-sm font-semibold text-cyan-700">

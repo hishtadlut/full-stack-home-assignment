@@ -135,6 +135,14 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({ token: validToken, user: seededUser });
   }
 
+  if (method === 'POST' && url.endsWith('/api/auth/refresh')) {
+    return jsonResponse({ error: 'Refresh token required' }, { status: 401 });
+  }
+
+  if (method === 'DELETE' && url.endsWith('/api/auth/refresh')) {
+    return new Response(null, { status: 204 });
+  }
+
   if (method === 'GET' && url.endsWith('/api/auth/me')) {
     return jsonResponse({ user: seededUser });
   }

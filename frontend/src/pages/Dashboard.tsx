@@ -19,7 +19,7 @@ export const Dashboard = () => {
   const [showForm, setShowForm] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const { logout, user } = useAuth();
+  const { logout, securityWarnings, user } = useAuth();
   const {
     search,
     status,
@@ -102,6 +102,7 @@ export const Dashboard = () => {
         onViewChange={(nextView) => setFilterParam('view', nextView)}
         onNewTask={() => setShowForm(true)}
         onLogout={logout}
+        securityWarnings={securityWarnings}
       />
 
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">

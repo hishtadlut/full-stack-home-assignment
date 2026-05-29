@@ -23,6 +23,7 @@ export const api = {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}${endpoint}`, {
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
@@ -42,16 +43,17 @@ export const api = {
     }
   },
 
-  async post<T = unknown>(endpoint: string, data: unknown): Promise<T> {
+  async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
         },
-        body: JSON.stringify(data),
+        ...(data !== undefined && { body: JSON.stringify(data) }),
       });
       
       if (!response.ok) {
@@ -72,6 +74,7 @@ export const api = {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
@@ -97,6 +100,7 @@ export const api = {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'DELETE',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
