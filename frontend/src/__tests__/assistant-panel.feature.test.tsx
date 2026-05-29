@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearAccessToken, setAccessToken } from '../auth/accessToken';
 import { AssistantPanel } from '../components/AssistantPanel';
 import type { AssistantChat, AssistantChatListItem, AssistantDraftShape } from '../types';
 
@@ -70,15 +71,15 @@ describe('Feature: assistant panel draft workflow', () => {
     currentChat = emptyChat;
     messagePostCount = 0;
     executeDraftShouldFail = false;
-    localStorage.setItem('token', 'auth-token');
+    setAccessToken('auth-token');
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
 
   afterEach(() => {
     cleanup();
+    clearAccessToken();
     vi.unstubAllGlobals();
-    localStorage.clear();
   });
 
   it('opens a fresh chat, renders an editable draft, and executes the approved draft', async () => {

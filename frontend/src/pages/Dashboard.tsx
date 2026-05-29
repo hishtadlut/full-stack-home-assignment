@@ -19,7 +19,7 @@ export const Dashboard = () => {
   const [showForm, setShowForm] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const { logout, securityWarnings, user } = useAuth();
+  const { accessToken, logout, securityWarnings, user } = useAuth();
   const {
     search,
     status,
@@ -49,6 +49,7 @@ export const Dashboard = () => {
     taskIds: assignedTaskIds,
     subscribeToTaskList: true,
     currentUserId: user?.id ?? null,
+    accessToken,
     onExternalTaskChanged: refetch,
   });
 

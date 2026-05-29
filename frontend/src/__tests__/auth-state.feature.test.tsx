@@ -29,10 +29,12 @@ const seededCredentials = {
 
 const validToken = 'auth-token';
 let actor: ReturnType<typeof userEvent.setup>;
+let refreshSessionAvailable: boolean;
 
 describe('Feature: auth state refreshes route guards without a browser reload', () => {
   beforeEach(() => {
     actor = userEvent.setup();
+    refreshSessionAvailable = false;
     localStorage.clear();
     stubApi();
   });
@@ -67,7 +69,7 @@ const givenIAmAnAnonymousVisitorOnTheLoginPage = async () => {
 };
 
 const givenIAmAnAuthenticatedUserOnTheDashboard = async () => {
-  localStorage.setItem('token', validToken);
+  refreshSessionAvailable = true;
   renderAppAt('/dashboard');
 
   await expectDashboard();
@@ -84,7 +86,7 @@ const whenILogOut = async () => {
 };
 
 const thenTheDashboardShouldBeVisible = async () => {
-  expect(localStorage.getItem('token')).toBe(validToken);
+  expect(localStorage.getItem('token')).toBeNull();
   await expectDashboard();
   expect(screen.getByText(`Welcome, ${seededUser.name}!`)).toBeInTheDocument();
 };
@@ -132,14 +134,20 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = init?.method ?? 'GET';
 
   if (method === 'POST' && url.endsWith('/api/auth/login')) {
+    refreshSessionAvailable = true;
     return jsonResponse({ token: validToken, user: seededUser });
   }
 
   if (method === 'POST' && url.endsWith('/api/auth/refresh')) {
+    if (refreshSessionAvailable) {
+      return jsonResponse({ token: validToken, user: seededUser });
+    }
+
     return jsonResponse({ error: 'Refresh token required' }, { status: 401 });
   }
 
   if (method === 'DELETE' && url.endsWith('/api/auth/refresh')) {
+    refreshSessionAvailable = false;
     return new Response(null, { status: 204 });
   }
 

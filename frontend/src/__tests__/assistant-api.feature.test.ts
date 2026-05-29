@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearAccessToken, setAccessToken } from '../auth/accessToken';
 import { assistantApi } from '../services/assistantApi';
 import type { AssistantChat, AssistantDraftShape, AssistantExecutionResult } from '../types';
 
@@ -84,12 +85,12 @@ const failedChat: AssistantChat = {
 
 describe('Feature: assistant API failed draft execution responses', () => {
   beforeEach(() => {
-    localStorage.setItem('token', 'auth-token');
+    setAccessToken('auth-token');
   });
 
   afterEach(() => {
+    clearAccessToken();
     vi.unstubAllGlobals();
-    localStorage.clear();
   });
 
   it('returns the failed draft chat from a 409 execution response', async () => {

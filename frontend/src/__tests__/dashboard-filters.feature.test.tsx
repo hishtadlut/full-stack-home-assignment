@@ -6,6 +6,8 @@ import { AuthProvider } from '../auth/AuthProvider';
 import { jsonResponse, requestUrl, seededUser } from '../test/apiTestUtils';
 import type { Task } from '../types';
 
+const validToken = 'auth-token';
+
 const baseTasks: Task[] = [
   {
     id: 'task-1',
@@ -49,7 +51,6 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
     taskRequestUrls = [];
     tasks = [...baseTasks];
     realtimeSockets = [];
-    localStorage.setItem('token', 'auth-token');
     vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
@@ -201,6 +202,8 @@ describe('Feature: dashboard filters are reflected in the URL and task requests'
     await screen.findByText('Implement user authentication');
     await waitFor(() => {
       expect(realtimeSockets.length).toBeGreaterThan(0);
+      expect(latestRealtimeSocket().url).not.toContain('token=');
+      expect(latestRealtimeSocket().protocols).toEqual(['task-events', `auth.${validToken}`]);
       expect(latestRealtimeSocket().sentMessages).toContain(JSON.stringify({ type: 'subscribe_task_list' }));
       expect(latestRealtimeSocket().sentMessages).toContain(JSON.stringify({ type: 'subscribe', taskId: 'task-1' }));
     });
@@ -281,6 +284,10 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({ user: seededUser });
   }
 
+  if (method === 'POST' && url.endsWith('/api/auth/refresh')) {
+    return jsonResponse({ token: validToken, user: seededUser });
+  }
+
   if (method === 'GET' && url.includes('/api/tasks')) {
     taskRequestUrls.push(url);
     return jsonResponse(tasks);
@@ -331,11 +338,13 @@ class FakeWebSocket {
 
   readonly sentMessages: string[] = [];
   readonly url: string;
+  readonly protocols: string[];
   readyState = FakeWebSocket.OPEN;
   private readonly listeners: Record<string, FakeWebSocketListener[]> = {};
 
-  constructor(url: string) {
+  constructor(url: string, protocols?: string | string[]) {
     this.url = url;
+    this.protocols = Array.isArray(protocols) ? protocols : protocols ? [protocols] : [];
     realtimeSockets.push(this);
     window.setTimeout(() => this.emit('open', {}), 0);
   }

@@ -35,10 +35,13 @@ interface UseTaskRealtimeOptions {
   taskIds?: string[];
   subscribeToTaskList?: boolean;
   currentUserId: string | null;
+  accessToken: string | null;
   onExternalTaskChanged: () => void;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const REALTIME_PROTOCOL = 'task-events';
+const AUTH_PROTOCOL_PREFIX = 'auth.';
 const RECONNECT_DELAY_MS = 2000;
 const MAX_NOTIFICATIONS = 5;
 
@@ -47,6 +50,7 @@ export const useTaskRealtime = ({
   taskIds,
   subscribeToTaskList = false,
   currentUserId,
+  accessToken,
   onExternalTaskChanged,
 }: UseTaskRealtimeOptions) => {
   const [notifications, setNotifications] = useState<TaskRealtimeNotification[]>([]);
@@ -63,11 +67,9 @@ export const useTaskRealtime = ({
   }, [subscriptionKey]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-
     if (
       (!subscribeToTaskList && subscribedTaskIds.length === 0) ||
-      !token ||
+      !accessToken ||
       typeof window.WebSocket === 'undefined'
     ) {
       return undefined;
@@ -79,7 +81,7 @@ export const useTaskRealtime = ({
     const subscribedTaskIdSet = new Set(subscribedTaskIds);
 
     const connect = () => {
-      socket = new window.WebSocket(taskRealtimeUrl(token));
+      socket = new window.WebSocket(taskRealtimeUrl(), realtimeProtocols(accessToken));
 
       socket.addEventListener('open', () => {
         if (closed) {
@@ -143,20 +145,24 @@ export const useTaskRealtime = ({
 
       socket?.close();
     };
-  }, [subscriptionKey]);
+  }, [accessToken, subscriptionKey]);
 
   return notifications;
 };
 
-const taskRealtimeUrl = (token: string) => {
+const taskRealtimeUrl = () => {
   const url = new URL(API_URL, window.location.origin);
   const basePath = url.pathname.replace(/\/api\/?$/, '').replace(/\/$/, '');
 
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.pathname = `${basePath}/ws/tasks`;
-  url.searchParams.set('token', token);
   return url.toString();
 };
+
+const realtimeProtocols = (token: string) => [
+  REALTIME_PROTOCOL,
+  `${AUTH_PROTOCOL_PREFIX}${token}`,
+];
 
 const parseTaskListChangedEvent = (data: unknown): TaskListChangedEvent | null => {
   if (typeof data !== 'string') {

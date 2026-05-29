@@ -200,9 +200,6 @@ async function captureScreen(browserInstance, screen) {
     deviceScaleFactor: 1,
   });
 
-  await context.addInitScript(() => {
-    window.localStorage.setItem('token', 'visual-token');
-  });
   await context.route('**/api/**', fulfillMockApi);
 
   const page = await context.newPage();
@@ -226,6 +223,10 @@ async function fulfillMockApi(route) {
 
   if (method === 'GET' && pathname === '/api/auth/me') {
     return fulfillJson(route, { user });
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/refresh') {
+    return fulfillJson(route, { token: 'visual-token', user });
   }
 
   if (method === 'GET' && pathname === '/api/tasks') {
