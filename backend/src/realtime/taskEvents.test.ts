@@ -67,6 +67,16 @@ describe('task realtime events', () => {
     expect(mocks.verifyAuthToken).toHaveBeenCalledWith('bad-token');
   });
 
+  it('does not accept tokens from the websocket URL query string', async () => {
+    await startTaskEventServer();
+
+    const close = await waitForClose(createSocketWithQueryToken('valid-token'));
+
+    expect(close.code).toBe(1008);
+    expect(close.reason).toBe('Authentication required');
+    expect(mocks.verifyAuthToken).not.toHaveBeenCalled();
+  });
+
   it.each(taskActions)('subscribes visible task viewers and broadcasts %s events', async (action) => {
     await startTaskEventServer();
     mocks.verifyAuthToken.mockReturnValue({ userId: 'user-1' });
@@ -290,12 +300,18 @@ const startTaskEventServer = async (options?: Parameters<typeof attachTaskEventS
 
 const createSocket = (token?: string, options?: WebSocket.ClientOptions) => {
   const url = new URL(socketBaseUrl());
+  const protocols = token ? ['task-events', `auth.${token}`] : ['task-events'];
 
-  if (token) {
-    url.searchParams.set('token', token);
-  }
+  const socket = new WebSocket(url.toString(), protocols, options);
+  sockets.push(socket);
+  return socket;
+};
 
-  const socket = new WebSocket(url.toString(), options);
+const createSocketWithQueryToken = (token: string) => {
+  const url = new URL(socketBaseUrl());
+  url.searchParams.set('token', token);
+
+  const socket = new WebSocket(url.toString(), ['task-events']);
   sockets.push(socket);
   return socket;
 };

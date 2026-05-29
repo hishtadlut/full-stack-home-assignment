@@ -28,6 +28,7 @@ export interface RegisterData {
 export interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  accessToken: string | null;
   securityWarnings: SecurityWarning[];
   login: (email: string, password: string) => Promise<AuthResponse>;
   register: (userData: RegisterData) => Promise<AuthResponse>;

@@ -7,10 +7,14 @@ import {
 } from 'react';
 import { api } from '../services/api';
 import type { User } from '../types';
+import {
+  clearAccessToken,
+  discardPersistedAccessToken,
+  setAccessToken as setStoredAccessToken,
+} from './accessToken';
 import { AuthContext } from './useAuth';
 import type {
   AuthResponse,
-  MeResponse,
   RegisterData,
   SecurityWarning,
 } from './types';
@@ -21,31 +25,23 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [securityWarnings, setSecurityWarnings] = useState<SecurityWarning[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadUser = async () => {
-      const applyRefreshedSession = async () => {
-        const refreshedUser = await refreshUserSession();
-        setUser(refreshedUser);
-        setSecurityWarnings([]);
-      };
-
-      const token = localStorage.getItem('token');
-
-      if (!token) {
-        await applyRefreshedSession();
-        setLoading(false);
-        return;
-      }
-
       try {
-        const data = await api.get<MeResponse>('/auth/me');
-        setUser(data.user);
+        discardPersistedAccessToken();
+        const data = await refreshUserSession();
+
+        if (data) {
+          applyAuthResponse(data);
+        } else {
+          clearAuthState();
+        }
       } catch {
-        localStorage.removeItem('token');
-        await applyRefreshedSession();
+        clearAuthState();
       } finally {
         setLoading(false);
       }
@@ -56,16 +52,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.post<AuthResponse>('/auth/login', { email, password });
-    localStorage.setItem('token', data.token);
-    setUser(data.user);
+    applyAuthResponse(data);
     setSecurityWarnings(data.securityWarnings ?? []);
     return data;
   }, []);
 
   const register = useCallback(async (userData: RegisterData) => {
     const data = await api.post<AuthResponse>('/auth/register', userData);
-    localStorage.setItem('token', data.token);
-    setUser(data.user);
+    applyAuthResponse(data);
     setSecurityWarnings(data.securityWarnings ?? []);
     return data;
   }, []);
@@ -76,27 +70,38 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     } catch {
       // Logout should still complete locally when the server session is already gone.
     } finally {
-      localStorage.removeItem('token');
-      setUser(null);
+      clearAuthState();
       setSecurityWarnings([]);
     }
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, securityWarnings, login, register, logout }),
-    [user, loading, securityWarnings, login, register, logout],
+    () => ({ user, loading, accessToken, securityWarnings, login, register, logout }),
+    [user, loading, accessToken, securityWarnings, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+
+  function applyAuthResponse(data: AuthResponse) {
+    setStoredAccessToken(data.token);
+    discardPersistedAccessToken();
+    setAccessToken(data.token);
+    setUser(data.user);
+  }
+
+  function clearAuthState() {
+    clearAccessToken();
+    discardPersistedAccessToken();
+    setAccessToken(null);
+    setUser(null);
+  }
 };
 
 const refreshUserSession = async () => {
   try {
     const data = await api.post<AuthResponse>('/auth/refresh');
-    localStorage.setItem('token', data.token);
-    return data.user;
+    return data;
   } catch {
-    localStorage.removeItem('token');
     return null;
   }
 };

@@ -6,6 +6,8 @@ import { AuthProvider } from '../auth/AuthProvider';
 import { jsonResponse, requestUrl, seededUser } from '../test/apiTestUtils';
 import type { Comment, Task } from '../types';
 
+const validToken = 'auth-token';
+
 const task: Task = {
   id: 'task-1',
   title: 'Design dashboard UI',
@@ -59,7 +61,6 @@ describe('Feature: task detail comment and error flows', () => {
     currentTask = task;
     usersRequestFails = false;
     realtimeSockets = [];
-    localStorage.setItem('token', 'auth-token');
     vi.stubGlobal('WebSocket', FakeWebSocket);
     vi.stubGlobal('fetch', vi.fn(apiResponseFor));
   });
@@ -145,6 +146,8 @@ describe('Feature: task detail comment and error flows', () => {
     await screen.findByRole('heading', { name: task.title });
     await waitFor(() => {
       expect(realtimeSockets).toHaveLength(1);
+      expect(realtimeSockets[0].url).not.toContain('token=');
+      expect(realtimeSockets[0].protocols).toEqual(['task-events', `auth.${validToken}`]);
     });
 
     currentTask = {
@@ -218,6 +221,10 @@ const apiResponseFor = async (input: RequestInfo | URL, init?: RequestInit) => {
     return jsonResponse({ user: seededUser });
   }
 
+  if (method === 'POST' && url.endsWith('/api/auth/refresh')) {
+    return jsonResponse({ token: validToken, user: seededUser });
+  }
+
   if (method === 'GET' && url.endsWith(`/api/tasks/${currentTask.id}`)) {
     return jsonResponse(currentTask);
   }
@@ -289,11 +296,13 @@ class FakeWebSocket {
 
   readonly sentMessages: string[] = [];
   readonly url: string;
+  readonly protocols: string[];
   readyState = FakeWebSocket.OPEN;
   private readonly listeners: Record<string, FakeWebSocketListener[]> = {};
 
-  constructor(url: string) {
+  constructor(url: string, protocols?: string | string[]) {
     this.url = url;
+    this.protocols = Array.isArray(protocols) ? protocols : protocols ? [protocols] : [];
     realtimeSockets.push(this);
     window.setTimeout(() => this.emit('open', {}), 0);
   }

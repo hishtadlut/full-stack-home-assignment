@@ -20,7 +20,7 @@ import type { Comment, Task, TaskEditableFields, User } from '../types';
 export const TaskDetail = () => {
   const { taskId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { accessToken, user } = useAuth();
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -114,6 +114,7 @@ export const TaskDetail = () => {
   const realtimeNotifications = useTaskRealtime({
     taskId,
     currentUserId: user?.id ?? null,
+    accessToken,
     onExternalTaskChanged: refreshTaskSilently,
   });
 

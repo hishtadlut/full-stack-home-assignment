@@ -40,12 +40,20 @@ interface AttachTaskEventServerOptions {
 
 const clients = new Set<TaskClient>();
 const TASK_HEARTBEAT_INTERVAL_MS = 30_000;
+const REALTIME_PROTOCOL = 'task-events';
+const AUTH_PROTOCOL_PREFIX = 'auth.';
 
 export const attachTaskEventServer = (
   server: HttpServer,
   { heartbeatIntervalMs = TASK_HEARTBEAT_INTERVAL_MS, refHeartbeat = false }: AttachTaskEventServerOptions = {},
 ) => {
-  const wss = new WebSocketServer({ server, path: '/ws/tasks' });
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws/tasks',
+    handleProtocols(protocols) {
+      return protocols.has(REALTIME_PROTOCOL) ? REALTIME_PROTOCOL : false;
+    },
+  });
   const heartbeatTimer = setInterval(() => {
     for (const client of clients) {
       if (client.socket.readyState !== WebSocket.OPEN) {
@@ -165,7 +173,7 @@ const publishTaskChangedToAuthorizedClients = async (taskId: string, message: st
 };
 
 const authenticateSocket = (request: IncomingMessage) => {
-  const token = new URL(request.url ?? '', 'http://localhost').searchParams.get('token');
+  const token = tokenFromProtocols(request.headers['sec-websocket-protocol']);
 
   if (!token) {
     return null;
@@ -176,6 +184,16 @@ const authenticateSocket = (request: IncomingMessage) => {
   } catch {
     return null;
   }
+};
+
+const tokenFromProtocols = (protocolHeader: string | string[] | undefined) => {
+  const protocols = Array.isArray(protocolHeader) ? protocolHeader : [protocolHeader ?? ''];
+  const authProtocol = protocols
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(AUTH_PROTOCOL_PREFIX));
+
+  return authProtocol?.slice(AUTH_PROTOCOL_PREFIX.length) || null;
 };
 
 const handleClientMessage = async (client: TaskClient, rawMessage: string) => {
