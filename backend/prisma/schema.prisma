@@ -21,6 +21,7 @@ model User {
   assignments TaskAssignment[]
   comments    Comment[]
   assistantChats AssistantChat[]
+  securityEvents SecurityEvent[]
 }
 
 model Task {
@@ -134,4 +135,22 @@ model AssistantDraft {
   assistantMessage   AssistantMessage? @relation(fields: [assistantMessageId], references: [id], onDelete: SetNull)
 
   @@index([chatId, status])
+}
+
+model SecurityEvent {
+  id             String    @id @default(cuid())
+  userId         String
+  familyId       String?
+  eventType      String
+  time           DateTime  @default(now())
+  ip             String?
+  userAgent      String?
+  approxLocation String?
+  acknowledgedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, acknowledgedAt, time])
+  @@index([familyId])
 }

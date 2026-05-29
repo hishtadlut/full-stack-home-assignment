@@ -6,10 +6,13 @@ import assistantRoutes from './routes/assistant';
 import { corsMiddleware } from './middleware/cors';
 import userRoutes from './routes/users';
 import { jsonBodyErrorHandler, jsonBodyParser } from './middleware/requestBody';
+import { requireTrustedOriginForUnsafeRequests } from './middleware/origin';
 
 export const app = express();
 
+app.set('trust proxy', 1);
 app.use(corsMiddleware);
+app.use(requireTrustedOriginForUnsafeRequests);
 app.use(jsonBodyParser);
 app.use(jsonBodyErrorHandler);
 

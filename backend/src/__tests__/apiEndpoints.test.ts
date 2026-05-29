@@ -79,6 +79,11 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       update: vi.fn(),
     },
+    securityEvent: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+    },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
@@ -88,9 +93,13 @@ const mocks = vi.hoisted(() => {
     DraftExecutionError,
     bcryptCompare: vi.fn(),
     bcryptHash: vi.fn(),
+    createRefreshSession: vi.fn(),
     executeApprovedDraft: vi.fn(),
     generateAssistantResponse: vi.fn(),
     prisma,
+    revokeAllUserRefreshFamilies: vi.fn(),
+    revokeRefreshSession: vi.fn(),
+    rotateRefreshSession: vi.fn(),
   };
 });
 
@@ -132,6 +141,13 @@ vi.mock('../assistant/geminiAssistant', () => ({
 vi.mock('../assistant/executor', () => ({
   DraftExecutionError: mocks.DraftExecutionError,
   executeApprovedDraft: mocks.executeApprovedDraft,
+}));
+
+vi.mock('../services/refreshTokens', () => ({
+  createRefreshSession: mocks.createRefreshSession,
+  revokeAllUserRefreshFamilies: mocks.revokeAllUserRefreshFamilies,
+  revokeRefreshSession: mocks.revokeRefreshSession,
+  rotateRefreshSession: mocks.rotateRefreshSession,
 }));
 
 const now = new Date('2026-05-27T10:00:00.000Z');
@@ -243,6 +259,22 @@ beforeEach(() => {
 
   mocks.bcryptHash.mockResolvedValue('hashed-password');
   mocks.bcryptCompare.mockResolvedValue(true);
+  mocks.createRefreshSession.mockResolvedValue({
+    token: 'refresh-token',
+    familyId: 'family-1',
+    rtId: 'rt-1',
+    expiresAt: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000),
+  });
+  mocks.rotateRefreshSession.mockResolvedValue({
+    status: 'rotated',
+    userId: user.id,
+    familyId: 'family-1',
+    token: 'next-refresh-token',
+    rtId: 'rt-2',
+    expiresAt: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000),
+  });
+  mocks.revokeRefreshSession.mockResolvedValue(undefined);
+  mocks.revokeAllUserRefreshFamilies.mockResolvedValue(undefined);
   mocks.executeApprovedDraft.mockResolvedValue(successfulExecution);
   mocks.generateAssistantResponse.mockResolvedValue({
     schemaVersion: 1,
@@ -255,6 +287,9 @@ beforeEach(() => {
   mocks.prisma.assistantDraft.findFirst.mockResolvedValue(null);
   mocks.prisma.assistantDraft.updateMany.mockResolvedValue({ count: 0 });
   mocks.prisma.assistantDraft.update.mockResolvedValue({ id: 'draft-1' });
+  mocks.prisma.securityEvent.create.mockResolvedValue({ id: 'security-event-1' });
+  mocks.prisma.securityEvent.findMany.mockResolvedValue([]);
+  mocks.prisma.securityEvent.updateMany.mockResolvedValue({ count: 0 });
   mocks.prisma.taskAssignment.findMany.mockResolvedValue([]);
   mocks.prisma.task.updateMany.mockResolvedValue({ count: 1 });
 });
@@ -278,6 +313,33 @@ const authHeader = (userId = user.id) =>
 const expectError = (response: request.Response, status: number, error: string) => {
   expect(response.status).toBe(status);
   expect(response.body).toEqual({ error });
+};
+
+const expectRefreshCookie = (response: request.Response, value = 'refresh-token') => {
+  const cookie = setCookies(response).find((header) => header.startsWith(`refresh_token=${value}`));
+
+  expect(cookie).toEqual(expect.stringContaining('HttpOnly'));
+  expect(cookie).toEqual(expect.stringContaining('Secure'));
+  expect(cookie).toEqual(expect.stringContaining('SameSite=Lax'));
+  expect(cookie).toEqual(expect.stringContaining('Path=/api/auth/refresh'));
+  expect(cookie).toEqual(expect.stringContaining('Max-Age=1296000'));
+};
+
+const expectClearedRefreshCookie = (response: request.Response) => {
+  const cookie = setCookies(response).find((header) => header.startsWith('refresh_token='));
+
+  expect(cookie).toEqual(expect.stringContaining('Path=/api/auth/refresh'));
+  expect(cookie).toEqual(expect.stringContaining('Expires=Thu, 01 Jan 1970 00:00:00 GMT'));
+};
+
+const setCookies = (response: request.Response): string[] => {
+  const header = response.headers['set-cookie'];
+
+  if (!header) {
+    return [];
+  }
+
+  return Array.isArray(header) ? header : [header];
 };
 
 const recordNotFound = () =>
@@ -319,6 +381,16 @@ describe('app endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  it('rejects unsafe requests from untrusted browser origins', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', 'https://evil.example')
+      .send({ email: user.email, password: 'password123' });
+
+    expectError(response, 403, 'Untrusted request origin');
+    expect(mocks.prisma.user.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe('auth endpoints', () => {
@@ -339,7 +411,11 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(201);
     expect(response.body.user).toEqual(user);
     expect(response.body.token).toEqual(expect.any(String));
+    expectRefreshCookie(response);
     expect(mocks.bcryptHash).toHaveBeenCalledWith('password123', 10);
+    expect(mocks.createRefreshSession).toHaveBeenCalledWith(user.id, expect.objectContaining({
+      ip: expect.any(String),
+    }));
     expect(mocks.prisma.user.create).toHaveBeenCalledWith({
       data: {
         email: 'user@example.com',
@@ -442,7 +518,45 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.body.user).toEqual(user);
     expect(response.body.token).toEqual(expect.any(String));
+    expectRefreshCookie(response);
     expect(mocks.bcryptCompare).toHaveBeenCalledWith('password123', 'hashed-password');
+  });
+
+  it('POST /api/auth/login returns pending refresh-token reuse warnings once', async () => {
+    mocks.prisma.user.findFirst.mockResolvedValue({
+      ...user,
+      password: 'hashed-password',
+    });
+    mocks.prisma.securityEvent.findMany.mockResolvedValue([
+      {
+        id: 'security-event-1',
+        eventType: 'refresh_token_reuse',
+        time: now,
+        ip: '203.0.113.7',
+        userAgent: 'unknown-browser',
+        approxLocation: 'Tel Aviv, IL',
+      },
+    ]);
+
+    const response = await request(app).post('/api/auth/login').send({
+      email: user.email,
+      password: 'password123',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.securityWarnings).toEqual([
+      {
+        eventType: 'refresh_token_reuse',
+        time: now.toISOString(),
+        ip: '203.0.113.7',
+        userAgent: 'unknown-browser',
+        approxLocation: 'Tel Aviv, IL',
+      },
+    ]);
+    expect(mocks.prisma.securityEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['security-event-1'] } },
+      data: { acknowledgedAt: expect.any(Date) },
+    });
   });
 
   it.each([
@@ -522,6 +636,81 @@ describe('auth endpoints', () => {
     });
 
     expectError(response, 500, 'Failed to login');
+  });
+
+  it('POST /api/auth/refresh rotates a valid refresh token and returns a new access token', async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue(user);
+
+    const response = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', ['refresh_token=old-refresh-token']);
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).toEqual(user);
+    expect(response.body.token).toEqual(expect.any(String));
+    expectRefreshCookie(response, 'next-refresh-token');
+    expect(mocks.rotateRefreshSession).toHaveBeenCalledWith('old-refresh-token', expect.objectContaining({
+      ip: expect.any(String),
+    }));
+  });
+
+  it('POST /api/auth/refresh records reuse attempts and clears the cookie', async () => {
+    mocks.rotateRefreshSession.mockResolvedValue({
+      status: 'reuse_detected',
+      userId: user.id,
+      familyId: 'family-1',
+    });
+
+    const response = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', ['refresh_token=old-refresh-token'])
+      .set('X-Forwarded-For', '203.0.113.9')
+      .set('User-Agent', 'replay-client');
+
+    expectError(response, 401, 'Refresh token reuse detected. Please login again.');
+    expectClearedRefreshCookie(response);
+    expect(mocks.prisma.securityEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: user.id,
+        familyId: 'family-1',
+        eventType: 'refresh_token_reuse',
+        ip: '203.0.113.9',
+        userAgent: 'replay-client',
+      }),
+    });
+  });
+
+  it('POST /api/auth/refresh rejects missing refresh cookies', async () => {
+    const response = await request(app).post('/api/auth/refresh');
+
+    expectError(response, 401, 'Refresh token required');
+    expectClearedRefreshCookie(response);
+    expect(mocks.rotateRefreshSession).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /api/auth/refresh revokes the presented refresh family', async () => {
+    const response = await request(app)
+      .delete('/api/auth/refresh')
+      .set('Cookie', ['refresh_token=old-refresh-token']);
+
+    expect(response.status).toBe(204);
+    expect(response.text).toBe('');
+    expectClearedRefreshCookie(response);
+    expect(mocks.revokeRefreshSession).toHaveBeenCalledWith('old-refresh-token', expect.objectContaining({
+      ip: expect.any(String),
+    }));
+  });
+
+  it('POST /api/auth/logout-all revokes all refresh families for the user', async () => {
+    const response = await request(app)
+      .post('/api/auth/logout-all')
+      .set('Authorization', authHeader());
+
+    expect(response.status).toBe(204);
+    expect(response.text).toBe('');
+    expect(mocks.revokeAllUserRefreshFamilies).toHaveBeenCalledWith(user.id, expect.objectContaining({
+      ip: expect.any(String),
+    }));
   });
 
   it('GET /api/auth/me returns the authenticated user', async () => {
